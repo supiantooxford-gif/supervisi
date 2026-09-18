@@ -1,0 +1,4 @@
+# Berkas data aplikasi (basis data SQLite & sesi) — jangan diakses langsung.
+Require all denied
+Deny from all
+Options -Indexes
