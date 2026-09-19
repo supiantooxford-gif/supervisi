@@ -4,11 +4,15 @@
  *
  * Tata letak: kepala portal (nama aplikasi + tautan pendaftaran), lalu dua kolom —
  * kolom kiri berisi penjelasan aplikasi (tentang, menu supervisi yang BENAR-BENAR ada
- * di aplikasi ini, peran pengguna, cara mulai, dan keamanan), kolom kanan berisi formulir masuk.
+ * di aplikasi ini, cara mulai, dan keamanan), kolom kanan berisi formulir masuk.
  *
- * Halaman ini bersifat PUBLIK (belum ada konteks sekolah), jadi istilah yang dipakai tetap
- * generik "Sekolah". Angka statistik sekolah/guru/hasil supervisi sengaja TIDAK ditampilkan
- * (permintaan pemilik) — portal hanya menjelaskan fungsi aplikasi.
+ * ISTILAH (permintaan pemilik): halaman ini bersifat PUBLIK, jadi istilah yang dipakai adalah
+ * "sekolah/madrasah" pada SELURUH tulisan yang tampil — halaman ini melayani sekolah umum
+ * maupun madrasah sekaligus (dulu memakai istilah generik "Sekolah" saja).
+ * Angka statistik sekolah/guru/hasil supervisi sengaja TIDAK ditampilkan (permintaan pemilik)
+ * — portal hanya menjelaskan fungsi aplikasi.
+ * Catatan: teks $keteranganGagal (disimpan pada Log Aktivitas, bukan tampilan halaman ini) sengaja
+ * tetap memakai istilah pendek "sekolah …" agar riwayat log & uji log tetap konsisten.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/inc/init.php';
@@ -41,19 +45,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $err = 'Akun ini sedang dinonaktifkan. Hubungi administrator.';
             $keteranganGagal = 'akun dinonaktifkan';
         } elseif (!in_array($u['role'], ['super', 'pengawas'], true) && !$sekolahUser) {
-            $err = 'Akun ini belum ditautkan ke sekolah mana pun. Hubungi Super Admin.';
+            $err = 'Akun ini belum ditautkan ke sekolah/madrasah mana pun. Hubungi Super Admin.';
             $keteranganGagal = 'akun belum ditautkan ke sekolah';
         } elseif ($sekolahUser && ($sekolahUser['verifikasi'] ?? 'disetujui') === 'menunggu') {
-            $err = 'Pendaftaran sekolah ' . $sekolahUser['nama'] . ' masih MENUNGGU PERSETUJUAN Super Admin. '
+            $err = 'Pendaftaran sekolah/madrasah ' . $sekolahUser['nama'] . ' masih MENUNGGU PERSETUJUAN Super Admin. '
                  . 'Anda dapat masuk setelah pendaftaran disetujui.';
             $keteranganGagal = 'sekolah masih menunggu persetujuan';
         } elseif ($sekolahUser && ($sekolahUser['verifikasi'] ?? 'disetujui') === 'ditolak') {
-            $err = 'Pendaftaran sekolah ' . $sekolahUser['nama'] . ' belum disetujui'
+            $err = 'Pendaftaran sekolah/madrasah ' . $sekolahUser['nama'] . ' belum disetujui'
                  . (!empty($sekolahUser['alasan_tolak']) ? ': ' . $sekolahUser['alasan_tolak'] : '.')
                  . ' Silakan hubungi Super Admin.';
             $keteranganGagal = 'pendaftaran sekolah ditolak';
         } elseif ($sekolahUser && (int) $sekolahUser['aktif'] !== 1) {
-            $err = 'Sekolah ' . $sekolahUser['nama'] . ' sedang dinonaktifkan. Hubungi Super Admin.';
+            $err = 'Sekolah/Madrasah ' . $sekolahUser['nama'] . ' sedang dinonaktifkan. Hubungi Super Admin.';
             $keteranganGagal = 'sekolah dinonaktifkan';
         } else {
             session_regenerate_id(true);
@@ -119,11 +123,11 @@ try {
         <div class="portal-logo"><?= ikon('school', 30) ?></div>
         <div>
           <h1><?= e(APP_NAME) ?> <span class="portal-tagline">Supervisi Akademik</span></h1>
-          <p>Sistem informasi supervisi akademik guru — melayani banyak sekolah sekaligus</p>
+          <p>Sistem informasi supervisi akademik guru</p>
         </div>
       </div>
       <div class="portal-head-kanan">
-        <a class="btn btn-ghost btn-sm" href="daftar.php"><?= ikon('school', 15) ?> Daftarkan Sekolah</a>
+        <a class="btn btn-ghost btn-sm" href="daftar.php"><?= ikon('school', 15) ?> Daftarkan Sekolah/Madrasah</a>
       </div>
     </header>
 
@@ -135,18 +139,20 @@ try {
         <section class="card portal-hero">
           <div class="section-title mb8"><?= ikon('star', 14) ?> Tentang Aplikasi</div>
           <p class="portal-lead">
-            <b><?= e(APP_NAME) ?></b> adalah aplikasi <b>supervisi akademik guru</b> untuk sekolah dan madrasah.
+            <b><?= e(APP_NAME) ?></b> adalah aplikasi <b>supervisi akademik guru</b> untuk sekolah/madrasah.
             Penilaian dilakukan memakai butir penilaian yang tersusun dalam menu supervisi, setiap butir diberi
-            skor 1-4, lalu <b>nilai akhir dan predikat dihitung otomatis</b> mengikuti ambang yang ditetapkan sekolah.
+            skor 1-4, lalu <b>nilai akhir dan predikat dihitung otomatis</b> mengikuti ambang yang ditetapkan
+            sekolah/madrasah.
           </p>
           <p class="portal-lead">
             Hasilnya dirangkum pada laporan dan rekap (matriks guru &times; menu beserta grafik), dilengkapi
             <b>jadwal supervisi</b> dan <b>dokumen siap cetak</b>: lembar hasil supervisi, data guru, jadwal,
-            serta daftar butir penilaian — semuanya memakai kop sekolah dan tanda tangan kepala sekolah.
+            serta daftar butir penilaian — semuanya memakai kop sekolah/madrasah dan
+            tanda tangan kepala sekolah/madrasah.
           </p>
           <p class="portal-lead mut">
-            Aplikasi ini <b>multi-sekolah</b>: satu pemasangan dapat dipakai banyak sekolah/madrasah sekaligus,
-            dengan data setiap sekolah yang terpisah dan akun berjenjang sesuai tugas masing-masing.
+            Aplikasi ini dipakai bersama oleh <b>banyak sekolah/madrasah</b> sekaligus: satu pemasangan,
+            dengan data setiap sekolah/madrasah yang terpisah dan akun berjenjang sesuai tugas masing-masing.
           </p>
         </section>
 
@@ -182,8 +188,8 @@ try {
           <p class="hint mt16">
             Selain menu supervisi di atas, tersedia menu pendukung: <b>Laporan &amp; Rekap</b>,
             <b>Data Guru</b> (dapat diimpor dari Excel/CSV), <b>Jadwal Supervisi</b>, <b>Pengguna &amp; Akun</b>,
-            serta <b>Profil &amp; Pengaturan</b> sekolah. Butir penilaian dikelola Super Admin sebagai
-            daftar global sehingga dipakai bersama semua sekolah.
+            serta <b>Profil &amp; Pengaturan</b> sekolah/madrasah. Butir penilaian dikelola Super Admin sebagai
+            daftar global sehingga dipakai bersama semua sekolah/madrasah.
           </p>
         </section>
 
@@ -195,15 +201,17 @@ try {
           <ol class="portal-alur">
             <li><b>Daftarkan sekolah/madrasah</b> melalui halaman pendaftaran — nama pengguna dan kata sandi
               pengelola dibuat pada saat mendaftar.</li>
-            <li><b>Super Admin menyetujui</b> pendaftaran; setelah disetujui akun pengelola dapat langsung masuk.</li>
+            <li><b>Admin menyetujui</b> pendaftaran; setelah disetujui akun pengelola dapat langsung masuk.</li>
             <li><b>Lengkapi data</b> guru beserta akunnya, lalu susun jadwal supervisi.</li>
             <li><b>Lakukan penilaian</b> per guru pada setiap menu supervisi dan cetak dokumennya bila diperlukan.</li>
           </ol>
           <ul class="portal-cek">
-            <li><b>Data setiap sekolah terpisah</b> — akun hanya melihat data sekolahnya sendiri.</li>
-            <li><b>Pengawas</b> hanya dapat melihat dan mengunduh rekap sekolah binaannya.</li>
+            <li><b>Data setiap sekolah/madrasah terpisah</b> — akun hanya melihat data dari
+              sekolah/madrasah yang bersangkutan.</li>
+            <li><b>Pengawas</b> hanya dapat melihat dan mengunduh rekap sekolah/madrasah binaannya.</li>
             <li><b>Kata sandi tersimpan teracak</b> dan setiap formulir dilindungi token keamanan (CSRF).</li>
-            <li><b>Dokumen cetak</b> memakai kop sekolah serta nama kepala sekolah dari pengaturan sekolah.</li>
+            <li><b>Dokumen cetak</b> memakai kop sekolah/madrasah serta nama kepala sekolah/madrasah
+              dari pengaturan sekolah/madrasah.</li>
           </ul>
         </section>
 
@@ -215,7 +223,7 @@ try {
           <div class="card-head">
             <div>
               <h2><?= ikon('lock', 16) ?> Masuk Aplikasi</h2>
-              <p>Gunakan akun yang diberikan pengelola sekolah Anda.</p>
+              <p>Gunakan akun yang diberikan pengelola sekolah/madrasah Anda.</p>
             </div>
           </div>
 
@@ -239,16 +247,16 @@ try {
 
           <div class="divider"></div>
           <p class="sm mut" style="margin:0 0 10px">
-            Sekolah Anda belum terdaftar? Ajukan pendaftaran, lalu aplikasi dapat dipakai setelah
-            pendaftaran disetujui Super Admin.
+            Sekolah/Madrasah Anda belum terdaftar? Ajukan pendaftaran, lalu aplikasi dapat dipakai setelah
+            pendaftaran disetujui Admin.
           </p>
-          <a class="btn btn-ghost full" href="daftar.php"><?= ikon('school', 16) ?> Daftarkan Sekolah</a>
+          <a class="btn btn-ghost full" href="daftar.php"><?= ikon('school', 16) ?> Daftarkan Sekolah/Madrasah</a>
 
           <div class="divider"></div>
           <div class="portal-bantuan">
             <b>Butuh bantuan?</b>
             <span>Lupa kata sandi, akun belum bisa masuk, atau pendaftaran belum disetujui — hubungi
-              administrator <?= e(APP_NAME) ?> atau pengelola sekolah Anda.</span>
+              administrator <?= e(APP_NAME) ?> atau pengelola sekolah/madrasah Anda.</span>
           </div>
         </div>
       </div>

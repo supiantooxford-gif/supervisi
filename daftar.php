@@ -1,9 +1,13 @@
 <?php
 /**
- * Pendaftaran sekolah (halaman PUBLIK, dapat diakses tanpa masuk).
+ * Pendaftaran sekolah/madrasah (halaman PUBLIK, dapat diakses tanpa masuk).
  *
- * Sekolah yang mendaftar dicatat dengan status verifikasi "menunggu" dan akun adminnya
- * belum dapat dipakai sampai Super Admin menyetujui di menu Pendaftaran Sekolah.
+ * Sekolah/madrasah yang mendaftar dicatat dengan status verifikasi "menunggu" dan akun adminnya
+ * belum dapat dipakai sampai Admin menyetujui di menu Pendaftaran Sekolah.
+ *
+ * ISTILAH (permintaan pemilik): seluruh tulisan yang TAMPIL memakai istilah "sekolah/madrasah"
+ * (halaman ini melayani sekolah umum maupun madrasah) dan persetujuan disebut "Admin"
+ * (bukan "Super Admin"). Nama field/kolom (mis. name="kepala_sekolah") TIDAK diubah.
  * Menu & butir penilaian bawaan baru dibuat saat pendaftaran disetujui.
  */
 declare(strict_types=1);
@@ -40,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Validasi
     if ($form['nama'] === '') {
-        $err[] = 'Nama sekolah wajib diisi.';
+        $err[] = 'Nama sekolah/madrasah wajib diisi.';
     }
     if ($form['kontak_nama'] === '') {
         $err[] = 'Nama penanggung jawab (yang dapat dihubungi) wajib diisi.';
@@ -55,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form['tahun_ajaran'] = date('Y') . '/' . (date('Y') + 1);
     }
     if ($form['admin_nama'] === '') {
-        $err[] = 'Nama admin/kepala sekolah (pemilik akun) wajib diisi.';
+        $err[] = 'Nama admin/kepala sekolah/madrasah (pemilik akun) wajib diisi.';
     }
     $username = strtolower(preg_replace('/\s+/', '', $form['admin_username']));
     if ($username === '' || strlen($username) < 4) {
@@ -63,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!preg_match('/^[a-z0-9._-]+$/', $username)) {
         $err[] = 'Nama pengguna hanya boleh huruf kecil, angka, titik, garis bawah, atau tanda hubung.';
     } elseif (one('SELECT id FROM users WHERE username = ?', [$username])) {
-        $err[] = 'Nama pengguna "' . $username . '" sudah dipakai sekolah/akun lain. Pilih yang lain.';
+        $err[] = 'Nama pengguna "' . $username . '" sudah dipakai oleh sekolah/madrasah atau akun lain. Pilih yang lain.';
     }
     if (strlen($password) < 8) {
         $err[] = 'Kata sandi minimal 8 karakter.';
@@ -79,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Batasi jumlah pendaftaran per sesi agar tidak disalahgunakan
     $sudahKirim = (int) ($_SESSION['daftar_kirim'] ?? 0);
     if ($sudahKirim >= 3) {
-        $err[] = 'Anda sudah mengirim beberapa pendaftaran dari perangkat ini. Hubungi Super Admin bila belum mendapat kabar.';
+        $err[] = 'Anda sudah mengirim beberapa pendaftaran dari perangkat ini. Hubungi Admin bila belum mendapat kabar.';
     }
 
     if (!$err) {
@@ -137,7 +141,7 @@ $sudahMasuk = $siapa !== null;
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pendaftaran Sekolah &middot; <?= e(APP_NAME) ?></title>
+<title>Pendaftaran Sekolah/Madrasah &middot; <?= e(APP_NAME) ?></title>
 <link rel="stylesheet" href="assets/style.css?v=<?= e(APP_VERSION) ?>">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127891;</text></svg>">
 <style>
@@ -163,7 +167,7 @@ $sudahMasuk = $siapa !== null;
     <div class="daftar-head">
       <div class="daftar-logo"><?= ikon('school', 26) ?></div>
       <div>
-        <h1>Pendaftaran Sekolah</h1>
+        <h1>Pendaftaran Sekolah/Madrasah</h1>
         <p><?= e(APP_NAME) ?> &middot; sistem informasi supervisi akademik guru</p>
       </div>
     </div>
@@ -173,8 +177,8 @@ $sudahMasuk = $siapa !== null;
         <div class="empty" style="padding:28px 18px">
           <?= ikon('check', 40) ?>
           <h3>Pendaftaran terkirim</h3>
-          <p>Terima kasih. Pendaftaran sekolah <b><?= e($form['nama']) ?></b> sudah kami terima dan
-            sekarang <b>menunggu persetujuan Super Admin</b>.</p>
+          <p>Terima kasih. Pendaftaran sekolah/madrasah <b><?= e($form['nama']) ?></b> sudah kami terima dan
+            sekarang <b>menunggu persetujuan Admin</b>.</p>
         </div>
 
         <div class="grid g2" style="gap:14px">
@@ -182,7 +186,7 @@ $sudahMasuk = $siapa !== null;
             <i>1</i>
             <div>
               <b>Data sedang diperiksa</b>
-              <span>Super Admin memeriksa kelengkapan data sekolah Anda.</span>
+              <span>Admin memeriksa kelengkapan data sekolah/madrasah Anda.</span>
             </div>
           </div>
           <div class="langkah">
@@ -199,10 +203,10 @@ $sudahMasuk = $siapa !== null;
           <div><label class="f">Nama Pengguna</label><div class="b"><?= e($form['admin_username']) ?></div></div>
           <div><label class="f">Kata Sandi</label><div class="b">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; <span class="xs mut">(yang Anda isi tadi)</span></div></div>
         </div>
-        <p class="hint">Simpan nama pengguna dan kata sandi Anda. Bila lupa, minta Super Admin mengatur ulang.</p>
+        <p class="hint">Simpan nama pengguna dan kata sandi Anda. Bila lupa, minta Admin mengatur ulang.</p>
 
         <div class="divider"></div>
-        <p class="sm mut" style="margin:0">Bila dalam beberapa hari belum ada kabar, hubungi Super Admin
+        <p class="sm mut" style="margin:0">Bila dalam beberapa hari belum ada kabar, hubungi Admin
           <?= e(APP_NAME) ?><?= APP_AUTHOR !== '' ? ' (dikembangkan oleh ' . e(APP_AUTHOR) . ')' : '' ?>.</p>
       </div>
 
@@ -229,13 +233,13 @@ $sudahMasuk = $siapa !== null;
         <div class="card-head">
           <div>
             <h2>Formulir Pendaftaran</h2>
-            <p>Isi data sekolah dan akun admin yang akan mengelola supervisi. Aplikasi aktif setelah disetujui Super Admin.</p>
+            <p>Isi data sekolah/madrasah dan akun admin yang akan mengelola supervisi. Aplikasi aktif setelah disetujui Admin.</p>
           </div>
           <span class="chip">Gratis melalui persetujuan</span>
         </div>
 
         <div class="grid g3 mb16" style="gap:12px">
-          <div class="langkah"><i>1</i><div><b>Isi formulir</b><span>Data sekolah + akun admin</span></div></div>
+          <div class="langkah"><i>1</i><div><b>Isi formulir</b><span>Data sekolah/madrasah + akun admin</span></div></div>
           <div class="langkah"><i>2</i><div><b>Diperiksa Admin</b><span>Persetujuan penggunaan</span></div></div>
           <div class="langkah"><i>3</i><div><b>Masuk &amp; mulai supervisi</b><span>Menu &amp; butir penilaian sudah disiapkan</span></div></div>
         </div>
@@ -244,26 +248,26 @@ $sudahMasuk = $siapa !== null;
           <?= csrf_field() ?>
 
           <div>
-            <div class="section-title mb8"><?= ikon('school', 14) ?> Data Sekolah</div>
+            <div class="section-title mb8"><?= ikon('school', 14) ?> Data Sekolah/Madrasah</div>
             <div class="grid g2">
               <div>
-                <label class="f" for="nama">Nama Sekolah *</label>
-                <input type="text" id="nama" name="nama" value="<?= e($form['nama']) ?>" required placeholder="mis. MA. Al Hidayah Mootilango">
+                <label class="f" for="nama">Nama Sekolah/Madrasah *</label>
+                <input type="text" id="nama" name="nama" value="<?= e($form['nama']) ?>" required placeholder="mis. MA. Sirojuth Tholibiin Mootilango">
               </div>
               <div>
                 <label class="f" for="npsn">NPSN</label>
                 <input type="text" id="npsn" name="npsn" value="<?= e($form['npsn']) ?>" placeholder="8 digit">
               </div>
               <div style="grid-column:1/-1">
-                <label class="f" for="alamat">Alamat Sekolah</label>
+                <label class="f" for="alamat">Alamat Sekolah/Madrasah</label>
                 <input type="text" id="alamat" name="alamat" value="<?= e($form['alamat']) ?>" placeholder="Jl. ... , Desa ..., Kec. ..., Kab. ...">
               </div>
               <div>
-                <label class="f" for="kepala_sekolah">Kepala Sekolah</label>
+                <label class="f" for="kepala_sekolah">Kepala Sekolah/Madrasah</label>
                 <input type="text" id="kepala_sekolah" name="kepala_sekolah" value="<?= e($form['kepala_sekolah']) ?>" placeholder="nama &amp; gelar">
               </div>
               <div>
-                <label class="f" for="nip_kepala_sekolah">NIP Kepala Sekolah</label>
+                <label class="f" for="nip_kepala_sekolah">NIP Kepala Sekolah/Madrasah</label>
                 <input type="text" id="nip_kepala_sekolah" name="nip_kepala_sekolah" value="<?= e($form['nip_kepala_sekolah']) ?>">
               </div>
               <div>
@@ -287,7 +291,7 @@ $sudahMasuk = $siapa !== null;
             <div class="grid g3">
               <div>
                 <label class="f" for="kontak_nama">Nama Penanggung Jawab *</label>
-                <input type="text" id="kontak_nama" name="kontak_nama" value="<?= e($form['kontak_nama']) ?>" required placeholder="mis. kepala sekolah / operator">
+                <input type="text" id="kontak_nama" name="kontak_nama" value="<?= e($form['kontak_nama']) ?>" required placeholder="mis. kepala sekolah/madrasah / operator">
               </div>
               <div>
                 <label class="f" for="kontak_telepon">No. HP / WhatsApp</label>
@@ -298,17 +302,17 @@ $sudahMasuk = $siapa !== null;
                 <input type="text" id="kontak_email" name="kontak_email" value="<?= e($form['kontak_email']) ?>" placeholder="nama@email.com">
               </div>
             </div>
-            <div class="hint">Isi minimal salah satu (HP/WhatsApp atau email) agar Super Admin dapat menghubungi Anda.</div>
+            <div class="hint">Isi minimal salah satu (HP/WhatsApp atau email) agar Admin dapat menghubungi Anda.</div>
           </div>
 
           <div class="divider" style="margin:0"></div>
 
           <div>
-            <div class="section-title mb8"><?= ikon('key', 14) ?> Akun Admin Sekolah</div>
+            <div class="section-title mb8"><?= ikon('key', 14) ?> Akun Admin Sekolah/Madrasah</div>
             <div class="grid g2">
               <div>
                 <label class="f" for="admin_nama">Nama Admin *</label>
-                <input type="text" id="admin_nama" name="admin_nama" value="<?= e($form['admin_nama']) ?>" required placeholder="nama kepala sekolah / pengawas / operator">
+                <input type="text" id="admin_nama" name="admin_nama" value="<?= e($form['admin_nama']) ?>" required placeholder="nama kepala sekolah/madrasah / pengawas / operator">
               </div>
               <div>
                 <label class="f" for="admin_username">Nama Pengguna *</label>
@@ -339,7 +343,7 @@ $sudahMasuk = $siapa !== null;
             <div>
               <label class="f" style="display:flex;gap:9px;align-items:flex-start;font-weight:600">
                 <input type="checkbox" name="setuju" value="1" style="width:16px;height:16px;margin-top:2px;accent-color:var(--accent)" required>
-                <span>Saya menyatakan data yang diisi benar dan menyetujui aplikasi ini digunakan untuk supervisi sekolah kami.</span>
+                <span>Saya menyatakan data yang diisi benar dan menyetujui aplikasi ini digunakan untuk supervisi sekolah/madrasah kami.</span>
               </label>
             </div>
           </div>

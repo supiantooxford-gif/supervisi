@@ -626,7 +626,7 @@ page_top('Kelola Sekolah', 'sekolah');
   <form method="post" class="grid g3">
     <?= csrf_field() ?>
     <input type="hidden" name="aksi" value="tambah">
-    <div><label class="f" for="nama">Nama Sekolah *</label><input type="text" id="nama" name="nama" required placeholder="mis. MA. Al Hidayah"></div>
+    <div><label class="f" for="nama">Nama Sekolah *</label><input type="text" id="nama" name="nama" required placeholder="mis. MA. Sirojuth Tholibiin Mootilango"></div>
     <div><label class="f" for="npsn">NPSN</label><input type="text" id="npsn" name="npsn" placeholder="8 digit"></div>
     <div><label class="f" for="tahun_ajaran">Tahun Ajaran</label><input type="text" id="tahun_ajaran" name="tahun_ajaran" value="<?= e(date('Y') . '/' . (date('Y') + 1)) ?>"></div>
     <div><label class="f" for="alamat">Alamat</label><input type="text" id="alamat" name="alamat" placeholder="Jl. ..."></div>

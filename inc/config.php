@@ -5,7 +5,7 @@
 declare(strict_types=1);
 
 define('APP_NAME', 'Supervisi Guru');
-define('APP_VERSION', '1.4.1');
+define('APP_VERSION', '1.4.5');
 
 // Unggahan berkas pengguna lewat media proxy platform (token dibaca server-side
 // dari berkas .vibecoder-media-token; JANGAN pernah dikirim ke browser).
