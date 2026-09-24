@@ -42,9 +42,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $guru = (int) ($u['guru_id'] ?? 0) > 0 ? one('SELECT * FROM guru WHERE id = ? AND sekolah_id = ?', [(int) $u['guru_id'], $sid]) : null;
-$ringkas = $guru ? one('SELECT COUNT(*) jml, AVG(nilai) rata FROM supervisi WHERE guru_id = ? AND status = "final"', [(int) $guru['id']]) : null;
+// Ringkasan & riwayat milik guru ini pada SEKOLAH ini (id guru sudah unik per sekolah,
+// pembatas sekolah_id ditambahkan supaya tidak pernah mengambil data sekolah lain).
+$ringkas = $guru ? one('SELECT COUNT(*) jml, AVG(nilai) rata FROM supervisi WHERE guru_id = ? AND sekolah_id = ? AND status = "final"', [(int) $guru['id'], $sid]) : null;
 $riwayat = $guru ? all('SELECT s.*, i.nama AS instrumen FROM supervisi s JOIN instrumen i ON i.id = s.instrumen_id
-                        WHERE s.guru_id = ? ORDER BY s.tanggal DESC LIMIT 8', [(int) $guru['id']]) : [];
+                        WHERE s.guru_id = ? AND s.sekolah_id = ? ORDER BY s.tanggal DESC LIMIT 8', [(int) $guru['id'], $sid]) : [];
 
 $fotoSaya = foto_user($u);
 

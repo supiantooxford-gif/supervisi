@@ -295,3 +295,95 @@ function terjemahkan_selesai(): void
         $GLOBALS['__vs_buf_level'] = 0;
     }
 }
+
+/**
+ * Kartu BUKTI FOTO PENGAMATAN PEMBELAJARAN: galeri + form unggah + tombol hapus.
+ * Hanya dipakai untuk menu `pengamatan` (lihat supervisi_foto_berlaku()).
+ *
+ * PENTING (jangan diubah tanpa membaca ini):
+ *  1. Kartu ini memakai <form> BIASA (multipart, dikirim langsung oleh peramban) — BUKAN
+ *     unggahan lewat fetch/JavaScript. Dengan begitu unggahan tetap berjalan walau skrip
+ *     gagal dimuat; pratinjau & pemeriksaan ukuran di assets/app.js hanya pelengkap.
+ *  2. Karena itu kartu ini WAJIB diletakkan DI LUAR form lain: HTML tidak mengizinkan form
+ *     bersarang — peramban akan membuang form di dalam form sehingga tombolnya diam-diam
+ *     mengirim form yang salah (inilah penyebab "unggah tidak jalan" pada versi pertama).
+ *  3. Isian berkas bernama `foto[]` dan boleh memilih 2 foto SEKALIGUS (permintaan pemilik);
+ *     batas 2 foto tetap ditegakkan di server (upload_supervisi_foto.php).
+ *
+ * @param int    $supId   id supervisi yang fotonya dikelola
+ * @param array  $foto    baris tabel supervisi_foto (hasil supervisi_foto())
+ * @param string $tempat  halaman pemanggil: 'form' (form penilaian) atau 'detail'
+ */
+function kartu_foto_pengamatan(int $supId, array $foto, string $tempat = 'form'): string
+{
+    $maks = (int) SUPERVISI_FOTO_MAKS;
+    $jml = count($foto);
+    $sisa = max(0, $maks - $jml);
+    $tempat = $tempat === 'detail' ? 'detail' : 'form';
+    ob_start();
+    ?>
+<div class="card" id="cardFotoPengamatan">
+  <div class="card-head">
+    <div>
+      <h2>Bukti Foto Pengamatan Pembelajaran</h2>
+      <p>Dokumentasi guru saat mengajar di kelas. Maksimal <?= $maks ?> foto &mdash; dapat dipilih sekaligus.</p>
+    </div>
+    <span class="pill <?= $jml >= $maks ? 'pill-ok' : 'pill-gray' ?>"><?= $jml ?> dari <?= $maks ?> foto</span>
+  </div>
+
+  <?php if ($jml > 0): ?>
+    <div class="foto-bukti-grid" id="fotoBuktiGrid">
+      <?php foreach ($foto as $ix => $f): ?>
+        <figure class="foto-bukti">
+          <img src="<?= e((string) $f['url']) ?>" alt="Bukti foto pengamatan <?= $ix + 1 ?>" loading="lazy">
+          <figcaption>
+            <span class="xs mut">Foto <?= $ix + 1 ?> dari <?= $maks ?></span>
+            <form method="post" action="upload_supervisi_foto.php"
+                  data-confirm="Hapus foto bukti pengamatan ini?">
+              <?= csrf_field() ?>
+              <input type="hidden" name="aksi" value="hapus">
+              <input type="hidden" name="supervisi_id" value="<?= $supId ?>">
+              <input type="hidden" name="id" value="<?= (int) $f['id'] ?>">
+              <input type="hidden" name="kembali" value="<?= e($tempat) ?>">
+              <button class="btn btn-danger btn-sm" type="submit"><?= ikon('trash', 14) ?> Hapus</button>
+            </form>
+          </figcaption>
+        </figure>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($sisa > 0): ?>
+    <form method="post" action="upload_supervisi_foto.php" enctype="multipart/form-data"
+          class="foto-unggah-form" id="formFotoPengamatan">
+      <?= csrf_field() ?>
+      <input type="hidden" name="aksi" value="unggah">
+      <input type="hidden" name="supervisi_id" value="<?= $supId ?>">
+      <input type="hidden" name="kembali" value="<?= e($tempat) ?>">
+      <div>
+        <label class="f" for="fotoPengamatan">Pilih berkas foto<?= $sisa > 1 ? ' (bisa ' . $sisa . ' sekaligus)' : '' ?></label>
+        <input type="file" id="fotoPengamatan" name="foto[]" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+               multiple data-sisa="<?= $sisa ?>" data-maks="<?= $maks ?>">
+        <div class="hint" id="fotoPengamatanHint">
+          Format JPG, PNG, GIF, WEBP, atau SVG &middot; maksimal 15 MB per foto &middot;
+          sisa <?= $sisa ?> slot foto (boleh memilih <?= $sisa > 1 ? $sisa . ' berkas sekaligus' : 'satu berkas' ?>).
+        </div>
+      </div>
+      <div class="foto-preview-wrap" id="fotoPengamatanPreviewWrap" hidden>
+        <div class="foto-pilih-daftar" id="fotoPengamatanPreview"></div>
+        <div class="xs mut center">Pratinjau berkas yang dipilih</div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" id="btnFotoPengamatan"><?= ikon('upload', 16) ?> Unggah Foto</button>
+        <span class="xs mut" id="fotoPengamatanStatus"></span>
+      </div>
+    </form>
+  <?php else: ?>
+    <div class="alert alert-warn" style="margin:0">
+      <?= ikon('info', 16) ?><span>Bukti foto sudah penuh (<?= $maks ?> dari <?= $maks ?> foto). Hapus salah satu foto bila ingin menggantinya.</span>
+    </div>
+  <?php endif; ?>
+</div>
+    <?php
+    return (string) ob_get_clean();
+}

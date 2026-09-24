@@ -5,13 +5,18 @@
 declare(strict_types=1);
 
 define('APP_NAME', 'Supervisi Guru');
-define('APP_VERSION', '1.4.5');
+define('APP_VERSION', '1.5.1');
 
 // Unggahan berkas pengguna lewat media proxy platform (token dibaca server-side
 // dari berkas .vibecoder-media-token; JANGAN pernah dikirim ke browser).
 define('MEDIA_ENDPOINT', 'http://127.0.0.1:4310/api/app-media/upload');
 define('FOTO_MAKS_BYTE', 15 * 1024 * 1024); // 15 MB (batas platform untuk gambar)
 define('FOTO_EKSTENSI', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
+
+// Bukti foto pengamatan pembelajaran (permintaan pemilik): hanya pada menu bawaan
+// "Supervisi Pengamatan Pembelajaran" (kode `pengamatan`), maksimal 2 foto per supervisi.
+define('SUPERVISI_FOTO_KODE', 'pengamatan');
+define('SUPERVISI_FOTO_MAKS', 2);
 
 // Pembuat aplikasi (tampil pada halaman login).
 define('APP_AUTHOR', 'Supianto');

@@ -238,6 +238,40 @@ input[type=file]:hover{border-color:var(--accent);background:#fff}
 .mini-avatar .avatar{font-size:.78rem}
 .foto-cetak{width:28mm;height:38mm;border:1px solid #b9b6cc;object-fit:cover;display:block}
 
+/* ---------- Bukti foto pengamatan pembelajaran (form & detail supervisi) ----------
+   Maksimal 2 foto per supervisi (menu "Supervisi Pengamatan Pembelajaran"). */
+.foto-bukti-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.foto-bukti{margin:0;display:flex;flex-direction:column;gap:8px;border:1px solid rgba(99,95,130,.22);border-radius:12px;padding:10px;background:#fff}
+.foto-bukti img{width:100%;height:190px;object-fit:cover;border-radius:8px;display:block;background:#f4f2fb}
+.foto-bukti figcaption{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px}
+.foto-bukti figcaption form{margin:0}
+
+/* Form unggah bukti foto — <form> multipart BIASA (tanpa JavaScript), diletakkan
+   di luar form lain karena HTML tidak mengizinkan form bersarang. */
+.foto-unggah-form{display:block;margin-top:16px;padding-top:16px;border-top:1px dashed rgba(99,95,130,.22)}
+.foto-unggah-form .foto-preview-wrap{align-items:stretch;margin-top:12px}
+.foto-unggah-form .foto-preview-wrap[hidden]{display:none}
+.foto-unggah-form .form-actions{margin-top:14px}
+.foto-pilih-daftar{display:flex;flex-wrap:wrap;gap:12px;width:100%}
+.foto-pilih{margin:0;border:1px solid rgba(99,95,130,.25);border-radius:10px;padding:6px;background:#fff;text-align:center;max-width:152px}
+.foto-pilih img{width:132px;height:96px;object-fit:cover;border-radius:6px;display:block;background:#f4f2fb}
+.foto-pilih figcaption{font-size:.7rem;color:var(--muted);margin-top:5px;word-break:break-all}
+
+/* ---------- Lampiran foto pada LEMBAR CETAK (cetak.php) ----------
+   Dua foto berdampingan, tinggi tetap dengan object-fit:contain supaya foto tegak
+   maupun melebar sama-sama muat tanpa terpotong. */
+.lampiran-foto-blok{clear:both;margin-top:20px;break-inside:avoid}
+.lampiran-judul{font-size:.86rem;text-transform:uppercase;letter-spacing:.03em;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid #b9b6cc}
+.lampiran-foto{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.lampiran-foto figure{margin:0;border:1px solid #b9b6cc;border-radius:6px;padding:6px;text-align:center;break-inside:avoid}
+.lampiran-foto img{display:block;width:100%;height:54mm;object-fit:contain;background:#fff}
+.lampiran-foto figcaption{font-size:.72rem;color:#635F82;margin-top:5px}
+
+@media (max-width:640px){
+  .foto-bukti-grid{grid-template-columns:minmax(0,1fr)}
+  .foto-bukti img{height:170px}
+}
+
 /* panel edit di dalam kartu butir */
 details.editbox{margin-top:12px;border-top:1px dashed rgba(99,95,130,.22);padding-top:2px}
 details.editbox > summary{
@@ -336,7 +370,17 @@ table.sheet td.ctr,table.sheet th.ctr{text-align:center}
 .portal-info{display:flex;flex-direction:column;gap:20px;min-width:0}
 .portal-side{display:flex;flex-direction:column;gap:18px;position:sticky;top:22px}
 
-.portal-hero .portal-lead{margin:0 0 10px;font-size:.92rem;line-height:1.65}
+.portal-hero .portal-lead{
+  margin:0 0 10px;font-size:.92rem;line-height:1.65;
+  /* Rata kiri-kanan (justify) untuk paragraf penjelasan Tentang Aplikasi — permintaan pemilik.
+     `hyphens:auto` + `overflow-wrap:break-word` dipakai supaya celah antarkata tidak melebar
+     pada layar sempit (di HP kata panjang tetap dipotong rapi, bukan merusak tata letak). */
+  text-align:justify;text-justify:inter-word;
+  hyphens:auto;-webkit-hyphens:auto;
+  overflow-wrap:break-word;
+}
+/* Paragraf terakhir tidak perlu dipaksa justify bila hanya satu baris — tetap justify aman,
+   jadi tidak ada pengecualian khusus. Baris terakhir pada mode justify memang rata kiri (bawaan peramban). */
 .portal-lead b{color:var(--accent)}
 .portal-lead:last-child{margin-bottom:0}
 
@@ -425,6 +469,7 @@ table.sheet td.ctr,table.sheet th.ctr{text-align:center}
   .content{gap:0}
   .print-sheet{box-shadow:none;border:none;padding:0;border-radius:0}
   .sheet-foto{float:right}
+  .lampiran-foto img{height:52mm}
   .card{background:#fff;box-shadow:none;border:none}
   a{color:inherit;text-decoration:none}
   @page{size:A4;margin:14mm}

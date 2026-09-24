@@ -16,7 +16,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/template.php';
 
 /** Naikkan angka ini setiap kali skema berubah agar migrasi ikut dijalankan. */
-const SCHEMA_VERSION = '11';
+const SCHEMA_VERSION = '12';
 
 function db(): PDO
 {
@@ -273,6 +273,18 @@ function ensure_schema(PDO $pdo): void
             UNIQUE (supervisi_id, butir_id)
         )');
 
+        // ---------- Bukti foto pengamatan pembelajaran (skema 12) ----------
+        // Maksimal 2 foto per supervisi (permintaan pemilik), hanya untuk menu
+        // "Supervisi Pengamatan Pembelajaran". Yang disimpan HANYA URL CDN hasil
+        // media proxy platform — berkasnya tidak pernah disimpan di server aplikasi.
+        $pdo->exec('CREATE TABLE IF NOT EXISTS supervisi_foto (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supervisi_id INTEGER NOT NULL REFERENCES supervisi(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            urutan INTEGER NOT NULL DEFAULT 1,
+            dibuat TEXT
+        )');
+
         // ---------- Log aktivitas & sesi yang sedang berjalan (skema 11) ----------
         // Riwayat masuk/keluar/gagal masuk, dipakai halaman Log Aktivitas (Super Admin).
         // Nama akun & sekolah disimpan sebagai SNAPSHOT supaya riwayat tetap terbaca walau
@@ -370,6 +382,7 @@ function ensure_schema(PDO $pdo): void
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_supervisi_sekolah ON supervisi(sekolah_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_supervisi_instrumen ON supervisi(instrumen_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_detail_supervisi ON detail(supervisi_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_supervisi_foto ON supervisi_foto(supervisi_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_butir_instrumen ON butir(instrumen_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_jadwal_sekolah_tanggal ON jadwal(sekolah_id, tanggal)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_pengawas_user ON pengawas_sekolah(user_id)');

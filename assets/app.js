@@ -239,6 +239,99 @@
     }
   }
 
+  /* ---------- Bukti foto pengamatan pembelajaran ----------
+     Unggahan memakai FORM BIASA (multipart) — JavaScript hanya menyiapkan pratinjau,
+     memeriksa berkas lebih awal, dan menonaktifkan tombol saat mengirim. Jadi unggahan
+     tetap berjalan walau skrip ini gagal dimuat. */
+  function initFotoPengamatan() {
+    var form = document.getElementById('formFotoPengamatan');
+    if (!form) return;
+    var inp = document.getElementById('fotoPengamatan');
+    var btn = document.getElementById('btnFotoPengamatan');
+    var prev = document.getElementById('fotoPengamatanPreview');
+    var wrap = document.getElementById('fotoPengamatanPreviewWrap');
+    var hint = document.getElementById('fotoPengamatanHint');
+    var status = document.getElementById('fotoPengamatanStatus');
+    var MAKS_BYTES = 15 * 1024 * 1024;   // per foto (FOTO_MAKS_BYTE)
+    var MAKS_TOTAL = 18 * 1024 * 1024;   // total sekali kirim (aman di bawah post_max_size 21 MB)
+    var OK = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+    var sisa = inp ? parseInt(inp.getAttribute('data-sisa') || '1', 10) : 1;
+    var sisaHint = hint ? hint.innerHTML : '';
+
+    function mb(b) { return (b / 1048576).toFixed(b < 1048576 ? 2 : 1).replace('.', ',') + ' MB'; }
+    function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[<>&"]/g, ''); }
+    function salah(pesan) {
+      if (hint) hint.innerHTML = '<b style="color:#b91c1c">' + esc(pesan) + '</b>';
+      if (wrap) wrap.hidden = true;
+      if (btn) btn.disabled = true;
+    }
+
+    if (inp && btn) {
+      inp.addEventListener('change', function () {
+        var files = Array.prototype.slice.call(inp.files || []);
+        if (!files.length) return;
+
+        if (files.length > sisa) {
+          salah('Anda memilih ' + files.length + ' berkas, sedangkan sisa slot hanya ' + sisa +
+                ' foto. Kurangi berkas yang dipilih.');
+          return;
+        }
+        var total = 0;
+        for (var i = 0; i < files.length; i++) {
+          var f = files[i];
+          var ext = (f.name.split('.').pop() || '').toLowerCase();
+          if (OK.indexOf(ext) === -1) {
+            salah('Format .' + ext + ' tidak didukung (' + f.name + '). Pakai JPG, PNG, GIF, WEBP, atau SVG.');
+            return;
+          }
+          if (f.size > MAKS_BYTES) {
+            salah('Berkas ' + f.name + ' terlalu besar (' + mb(f.size) + '). Maksimal 15 MB per foto.');
+            return;
+          }
+          total += f.size;
+        }
+        if (total > MAKS_TOTAL) {
+          salah('Total ukuran ' + mb(total) + ' melebihi batas sekali kirim. Unggah satu per satu atau perkecil fotonya.');
+          return;
+        }
+
+        btn.disabled = false;
+        if (hint) {
+          hint.innerHTML = sisaHint + ' <b>' + files.length + ' berkas siap diunggah</b> (total ' + mb(total) + ').';
+        }
+        if (status) status.textContent = '';
+
+        if (prev) prev.innerHTML = '';
+        if (wrap) wrap.hidden = files.length === 0;
+        files.forEach(function (f, idx) {
+          var ext = (f.name.split('.').pop() || '').toLowerCase();
+          if (ext === 'svg') {
+            var b = document.createElement('div');
+            b.className = 'foto-pilih';
+            b.innerHTML = '<span class="xs mut">SVG: ' + esc(f.name) + '</span>';
+            if (prev) prev.appendChild(b);
+            return;
+          }
+          var fr = new FileReader();
+          fr.onload = function () {
+            var kotak = document.createElement('figure');
+            kotak.className = 'foto-pilih';
+            kotak.innerHTML = '<img src="' + fr.result + '" alt="Pratinjau berkas ' + (idx + 1) + '">' +
+              '<figcaption>' + esc(f.name) + '<br>' + mb(f.size) + '</figcaption>';
+            if (prev) prev.appendChild(kotak);
+          };
+          fr.readAsDataURL(f);
+        });
+      });
+    }
+
+    form.addEventListener('submit', function () {
+      if (btn) { btn.disabled = true; btn.textContent = 'Mengunggah...'; }
+      if (status) status.textContent = 'Mohon tunggu, foto sedang diunggah ke penyimpanan.';
+    });
+  }
+
+
   /* ---------- Cetak ---------- */
   function initPrint() {
     document.addEventListener('click', function (ev) {
@@ -379,5 +472,6 @@
     initPrint();
     initFoto();
     initLogo();
+    initFotoPengamatan();
   });
 })();

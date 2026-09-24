@@ -38,6 +38,9 @@ $detail = all('SELECT d.skor, d.catatan,
 $pred = (string) $s['predikat'];
 $fotoGuru = foto_guru((int) $s['guru_id']);
 
+// Lampiran bukti foto pengamatan pembelajaran (menu "Supervisi Pengamatan Pembelajaran").
+$fotoBukti = supervisi_foto_berlaku((string) $s['kode']) ? supervisi_foto($id) : [];
+
 // Nama & NIP kepala sekolah diambil dari PENGATURAN sekolah (menu Profil & Pengaturan),
 // supaya lembar cetak selalu mencantumkan nama yang benar. Kolom "supervisor" pada data
 // supervisi sering hanya berisi teks umum (mis. "Kepala Sekolah"), jadi hanya dipakai
@@ -160,6 +163,20 @@ $predColor = $pred === 'A' ? '#047857' : ($pred === 'B' ? '#1d4ed8' : ($pred ===
         </td></tr>
       </tbody>
     </table>
+
+    <?php if ($fotoBukti): ?>
+    <div class="lampiran-foto-blok">
+      <h3 class="lampiran-judul">Lampiran: Bukti Foto Pengamatan Pembelajaran</h3>
+      <div class="lampiran-foto">
+        <?php foreach ($fotoBukti as $ix => $f): ?>
+          <figure>
+            <img src="<?= e((string) $f['url']) ?>" alt="Bukti foto pengamatan <?= $ix + 1 ?>">
+            <figcaption>Foto <?= $ix + 1 ?> dari <?= count($fotoBukti) ?></figcaption>
+          </figure>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
 
     <div class="sheet-foot">
       <div class="sheet-sign">

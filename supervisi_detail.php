@@ -38,6 +38,9 @@ $riwayat = all('SELECT s.id, s.tanggal, s.nilai, s.predikat, i.nama AS instrumen
 $th = thresholds();
 $pred = (string) $s['predikat'];
 
+// Bukti foto pengamatan pembelajaran (hanya menu "Supervisi Pengamatan Pembelajaran").
+$fotoBukti = supervisi_foto_berlaku((string) $s['kode']) ? supervisi_foto($id) : [];
+
 page_top('Detail Supervisi', (string) $s['kode']);
 ?>
 <div class="card">
@@ -115,6 +118,34 @@ page_top('Detail Supervisi', (string) $s['kode']);
     <p class="sm" style="margin:0"><?= nl2br(e((string) ($s['tindak_lanjut'] ?: '-'))) ?></p>
   </div>
 </div>
+
+<?php
+// Admin/kepala sekolah: kartu penuh (galeri + form unggah) — halaman ini muncul setelah
+// menyimpan supervisi baru, jadi unggahan bisa langsung dilakukan dari sini.
+// Peran lain (guru/pengawas): hanya melihat galerinya.
+$kartuFotoPenuh = $admin && supervisi_foto_berlaku((string) $s['kode']);
+if ($kartuFotoPenuh) {
+    // Form unggah berdiri sendiri → kartu ini tidak boleh diletakkan di dalam form lain.
+    echo kartu_foto_pengamatan((int) $s['id'], $fotoBukti, 'detail');
+} elseif ($fotoBukti) {
+    ?>
+<div class="card" id="cardFotoPengamatanLihat">
+  <div class="card-head">
+    <div><h2>Bukti Foto Pengamatan Pembelajaran</h2><p>Dokumentasi guru saat mengajar di kelas, diunggah supervisor.</p></div>
+    <span class="chip"><?= count($fotoBukti) ?> dari <?= (int) SUPERVISI_FOTO_MAKS ?> foto</span>
+  </div>
+  <div class="foto-bukti-grid">
+    <?php foreach ($fotoBukti as $ix => $f): ?>
+      <figure class="foto-bukti">
+        <img src="<?= e((string) $f['url']) ?>" alt="Bukti foto pengamatan <?= $ix + 1 ?>" loading="lazy">
+        <figcaption><span class="xs mut">Foto <?= $ix + 1 ?> dari <?= (int) SUPERVISI_FOTO_MAKS ?></span></figcaption>
+      </figure>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php
+}
+?>
 
 <div class="card">
   <div class="card-head"><div><h2>Riwayat Supervisi Guru Ini</h2><p>Seluruh supervisi final yang pernah dilakukan.</p></div></div>

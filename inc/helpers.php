@@ -1193,6 +1193,45 @@ function avatar_html(string $nama, ?string $foto, int $size = 36, string $kelas 
     return '<span class="' . e($kelas) . '" style="' . $style . '">' . $inisial . '</span>';
 }
 
+// ---------------------------------------------------------------- bukti foto pengamatan pembelajaran
+
+/**
+ * Benar bila menu supervisi ini menyediakan bukti foto pengamatan pembelajaran.
+ * Hanya menu bawaan "Supervisi Pengamatan Pembelajaran" (kode `pengamatan`) — sesuai
+ * permintaan pemilik. Kode menu tidak dapat diubah setelah dibuat, jadi penjagaan ini stabil.
+ */
+function supervisi_foto_berlaku(?string $kode): bool
+{
+    return trim((string) $kode) === SUPERVISI_FOTO_KODE;
+}
+
+/** Daftar foto bukti sebuah supervisi (urut nomor tampil). */
+function supervisi_foto(int $supervisiId): array
+{
+    if ($supervisiId <= 0) {
+        return [];
+    }
+    return all('SELECT * FROM supervisi_foto WHERE supervisi_id = ? ORDER BY urutan, id', [$supervisiId]);
+}
+
+/** Jumlah foto bukti sebuah supervisi. */
+function supervisi_foto_jumlah(int $supervisiId): int
+{
+    return (int) val('SELECT COUNT(*) FROM supervisi_foto WHERE supervisi_id = ?', [$supervisiId], 0);
+}
+
+/** Rapikan nomor urut foto (1..n) setelah sebuah foto dihapus. */
+function supervisi_foto_urutkan_ulang(int $supervisiId): void
+{
+    $n = 0;
+    foreach (supervisi_foto($supervisiId) as $f) {
+        $n++;
+        if ((int) $f['urutan'] !== $n) {
+            q('UPDATE supervisi_foto SET urutan = ? WHERE id = ?', [$n, (int) $f['id']]);
+        }
+    }
+}
+
 /** Daftar id supervisi yang memakai butir tertentu. */
 function supervisi_pemakai_butir(int $butirId): array
 {

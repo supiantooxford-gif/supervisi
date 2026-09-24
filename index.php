@@ -668,13 +668,17 @@ $totalSuper  = (int) val('SELECT COUNT(*) FROM supervisi WHERE status = "final" 
 $rataAll     = (float) val('SELECT AVG(nilai) FROM supervisi WHERE status = "final" AND sekolah_id = ?', [$sid], 0);
 $totDraft    = (int) val('SELECT COUNT(*) FROM supervisi WHERE status = "draft" AND sekolah_id = ?', [$sid], 0);
 $guruBelum   = (int) val('SELECT COUNT(*) FROM guru g WHERE g.aktif = 1 AND g.sekolah_id = ?
-        AND NOT EXISTS (SELECT 1 FROM supervisi s WHERE s.guru_id = g.id AND s.status = "final")', [$sid], 0);
+        AND NOT EXISTS (SELECT 1 FROM supervisi s WHERE s.guru_id = g.id AND s.status = "final" AND s.sekolah_id = g.sekolah_id)', [$sid], 0);
 
+// Kartu per menu + grafik "Rata-rata Nilai per Menu Supervisi" milik SEKOLAH INI.
+// Menu & butir memang global, tetapi angka supervisi WAJIB dibatasi sekolah_id —
+// tanpa itu nilai sekolah lain ikut terhitung (pernah menggigit: nilai MA Sirojuth
+// Tholibiin Mootilango muncul di dashboard MTs yang belum melakukan supervisi).
 $perInstrumen = all('SELECT i.id, i.kode, i.nama, i.ikon, i.deskripsi,
-        (SELECT COUNT(*) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final") AS jml,
-        (SELECT AVG(s.nilai) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final") AS rata,
-        (SELECT COUNT(DISTINCT s.guru_id) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final") AS jml_guru
-    FROM instrumen i WHERE i.aktif = 1 ORDER BY i.urutan, i.id');
+        (SELECT COUNT(*) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final" AND s.sekolah_id = ?) AS jml,
+        (SELECT AVG(s.nilai) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final" AND s.sekolah_id = ?) AS rata,
+        (SELECT COUNT(DISTINCT s.guru_id) FROM supervisi s WHERE s.instrumen_id = i.id AND s.status = "final" AND s.sekolah_id = ?) AS jml_guru
+    FROM instrumen i WHERE i.aktif = 1 ORDER BY i.urutan, i.id', [$sid, $sid, $sid]);
 
 $distribusi = ['A' => 0, 'B' => 0, 'C' => 0, 'D' => 0];
 foreach (all('SELECT predikat, COUNT(*) c FROM supervisi WHERE status = "final" AND sekolah_id = ? GROUP BY predikat', [$sid]) as $r) {
@@ -693,12 +697,14 @@ foreach (all('SELECT substr(tanggal,1,7) b, nilai FROM supervisi WHERE status = 
     }
 }
 
+// Peringkat & rata-rata per mapel: selain guru milik sekolah ini, baris supervisinya
+// juga dipastikan milik sekolah yang sama (s.sekolah_id = g.sekolah_id).
 $perGuru = all('SELECT g.id, g.nama, AVG(s.nilai) rata, COUNT(s.id) jml
-    FROM guru g JOIN supervisi s ON s.guru_id = g.id AND s.status = "final"
+    FROM guru g JOIN supervisi s ON s.guru_id = g.id AND s.status = "final" AND s.sekolah_id = g.sekolah_id
     WHERE g.sekolah_id = ? GROUP BY g.id ORDER BY rata DESC LIMIT 10', [$sid]);
 
 $perMapel = all('SELECT COALESCE(NULLIF(g.mapel, ""), "Belum diisi") mapel, AVG(s.nilai) rata, COUNT(s.id) jml
-    FROM guru g JOIN supervisi s ON s.guru_id = g.id AND s.status = "final"
+    FROM guru g JOIN supervisi s ON s.guru_id = g.id AND s.status = "final" AND s.sekolah_id = g.sekolah_id
     WHERE g.sekolah_id = ? GROUP BY mapel HAVING COUNT(s.id) > 0 ORDER BY rata DESC LIMIT 8', [$sid]);
 
 $terbaru = all('SELECT s.*, g.nama AS guru, i.nama AS instrumen, i.kode
@@ -706,7 +712,7 @@ $terbaru = all('SELECT s.*, g.nama AS guru, i.nama AS instrumen, i.kode
     WHERE s.sekolah_id = ? ORDER BY s.tanggal DESC, s.id DESC LIMIT 8', [$sid]);
 
 $belumList = all('SELECT g.* FROM guru g WHERE g.aktif = 1 AND g.sekolah_id = ? AND NOT EXISTS
-    (SELECT 1 FROM supervisi s WHERE s.guru_id = g.id AND s.status = "final") ORDER BY g.nama LIMIT 8', [$sid]);
+    (SELECT 1 FROM supervisi s WHERE s.guru_id = g.id AND s.status = "final" AND s.sekolah_id = g.sekolah_id) ORDER BY g.nama LIMIT 8', [$sid]);
 
 $predColors = ['A' => '#10b981', 'B' => '#3b82f6', 'C' => '#f59e0b', 'D' => '#dc2626'];
 $distArr = [];

@@ -54,6 +54,12 @@ if ($edit) {
 
 $err = [];
 
+// Bukti foto pengamatan pembelajaran — hanya menu "Supervisi Pengamatan Pembelajaran"
+// (permintaan pemilik), maksimal 2 foto. Foto menempel pada supervisi yang sudah tersimpan.
+$bolehFoto = supervisi_foto_berlaku((string) $ins['kode']);
+$fotoBukti = ($edit && $bolehFoto) ? supervisi_foto($id) : [];
+$maksFoto = SUPERVISI_FOTO_MAKS;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_guard();
     $form['guru_id'] = (int) ($_POST['guru_id'] ?? 0);
@@ -135,7 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $namaGuru = (string) val('SELECT nama FROM guru WHERE id = ? AND sekolah_id = ?', [$form['guru_id'], $sid], '');
-        flash('Supervisi ' . $ins['nama'] . ' untuk ' . $namaGuru . ' tersimpan (nilai ' . r1($h['nilai']) . ' - predikat ' . $h['predikat'] . ').');
+        $pesan = 'Supervisi ' . $ins['nama'] . ' untuk ' . $namaGuru . ' tersimpan (nilai ' . r1($h['nilai']) . ' - predikat ' . $h['predikat'] . ').';
+        if ($bolehFoto) {
+            $pesan .= ' Bukti foto pengamatan dapat diunggah di bagian "Bukti Foto Pengamatan Pembelajaran" pada halaman ini.';
+        }
+        flash($pesan);
         redirect('supervisi_detail.php?id=' . $sid);
     }
 }
@@ -253,6 +263,24 @@ page_top(($edit ? 'Edit: ' : '') . (string) $ins['nama'], $kode);
         </div>
       </div>
     </div>
+
+    <?php if ($bolehFoto && !$edit): ?>
+    <!-- Bukti foto menempel pada supervisi yang sudah tersimpan (maksimal 2 foto). -->
+    <div class="card" id="cardFotoPengamatan">
+      <div class="card-head">
+        <div>
+          <h2>Bukti Foto Pengamatan Pembelajaran</h2>
+          <p>Dokumentasi guru saat mengajar di kelas. Maksimal <?= (int) $maksFoto ?> foto.</p>
+        </div>
+        <span class="pill pill-gray">0 dari <?= (int) $maksFoto ?> foto</span>
+      </div>
+      <div class="alert alert-warn" style="margin:0">
+        <?= ikon('info', 16) ?>
+        <span>Simpan supervisi ini terlebih dahulu. Setelah tersimpan, kartu unggah bukti foto
+        (boleh <?= (int) $maksFoto ?> foto sekaligus) langsung tersedia di halaman ini dan di halaman detail.</span>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 
   <div class="grid" style="gap:20px">
@@ -296,6 +324,14 @@ page_top(($edit ? 'Edit: ' : '') . (string) $ins['nama'], $kode);
     </div>
   </div>
 </form>
+
+<?php
+// Kartu bukti foto berada DI LUAR form penilaian: HTML tidak mengizinkan form bersarang,
+// dan form bersarang membuat tombol unggah diam-diam mengirim form penilaian (bukan berkasnya).
+if ($bolehFoto && $edit) {
+    echo kartu_foto_pengamatan((int) $id, $fotoBukti, 'form');
+}
+?>
 
 <script>window.VS_TH = {a: <?= (float) setting('batas_a', '90') ?>, b: <?= (float) setting('batas_b', '80') ?>, c: <?= (float) setting('batas_c', '70') ?>};</script>
 <?php
