@@ -40,6 +40,10 @@ $sekolah = require_sekolah();
 $sid = (int) $sekolah['id'];
 $bolehUbah = is_admin();   // pengawas = hanya lihat
 
+// AKTIVASI (permintaan pemilik): pada mode terbatas hanya boleh ada AKTIVASI_MAKS_JADWAL baris
+// jadwal. Penjagaan sebenarnya ada di blok POST (aksi tambah/salin); nilai ini hanya untuk tampilan.
+$batasJadwal = batas_jadwal_tercapai();
+
 /** Tanggal valid (YYYY-MM-DD) atau null. */
 function tanggal_valid($v): ?string
 {
@@ -105,6 +109,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ---------------- tambah baris ----------------
     if ($aksi === 'tambah') {
+        // AKTIVASI: mode terbatas hanya mengizinkan AKTIVASI_MAKS_JADWAL baris jadwal (permintaan pemilik).
+        if (batas_jadwal_tercapai()) {
+            aktivasi_halang('jadwal', 'jadwal.php');
+        }
         $tanggal = tanggal_valid($_POST['tanggal'] ?? '');
         if ($tanggal === null) {
             flash('Tanggal jadwal wajib diisi dengan format tanggal yang benar.', 'err');
@@ -222,6 +230,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ---------------- salin jadwal dari satu tanggal ke tanggal lain ----------------
     if ($aksi === 'salin') {
+        // Menyalin berarti MENAMBAH baris → tunduk pada batas yang sama seperti tambah baris.
+        if (batas_jadwal_tercapai()) {
+            aktivasi_halang('jadwal', 'jadwal.php');
+        }
         $dari = tanggal_valid($_POST['dari'] ?? '');
         $ke = tanggal_valid($_POST['ke'] ?? '');
         if ($dari === null || $ke === null) {
@@ -395,7 +407,7 @@ page_top('Jadwal Supervisi', 'jadwal');
         </thead>
         <tbody>
         <?php $n = 0; foreach ($rows as $r): $n++; $sendiri = $editRow && (int) $editRow['id'] === (int) $r['id']; ?>
-          <tr<?= $sendiri ? ' style="background:rgba(79,70,229,.07)"' : '' ?>>
+          <tr<?= $sendiri ? ' style="background:rgba(var(--accent-rgb),.07)"' : '' ?>>
             <td class="ctr"><b><?= $n ?></b></td>
             <td class="nowrap">
               <b><?= e(tanggal_id((string) $r['tanggal'])) ?></b>
@@ -453,6 +465,7 @@ page_top('Jadwal Supervisi', 'jadwal');
     <?php endif; ?>
   </div>
 
+  <?php if (!$batasJadwal || $editRow): ?>
   <form method="post" class="grid g4">
     <?= csrf_field() ?>
     <input type="hidden" name="aksi" value="<?= $editRow ? 'ubah' : 'tambah' ?>">
@@ -506,6 +519,16 @@ page_top('Jadwal Supervisi', 'jadwal');
       <button class="btn btn-primary" type="submit"><?= $editRow ? ikon('check', 16) . ' Simpan Perubahan' : ikon('plus', 16) . ' Tambahkan ke Jadwal' ?></button>
     </div>
   </form>
+  <?php else: ?>
+    <?php // AKTIVASI (permintaan pemilik): mode terbatas hanya mengizinkan AKTIVASI_MAKS_JADWAL baris. ?>
+    <div class="alert alert-warn" style="margin:0">
+      <?= ikon('lock', 16) ?>
+      <span><b>Aplikasi belum diaktifasi.</b> Mode terbatas hanya mengizinkan
+        <?= (int) AKTIVASI_MAKS_JADWAL ?> baris jadwal supervisi, sedangkan sekolah ini sudah memilikinya.
+        <b>Segera lakukan aktifasi agar semua fitur bisa digunakan.</b></span>
+      <a class="btn btn-primary btn-sm" href="aktivasi.php?batas=jadwal&amp;kembali=jadwal.php" style="margin-left:auto"><?= ikon('key', 15) ?> Status &amp; Aktivasi</a>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="grid g2" style="align-items:start">

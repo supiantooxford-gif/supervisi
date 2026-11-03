@@ -20,6 +20,12 @@ if ($id && !$edit) {
     redirect('supervisi.php?kode=' . urlencode($kode));
 }
 
+// AKTIVASI: pada mode terbatas hanya boleh ada AKTIVASI_MAKS_SUPERVISI_MENU penilaian pada SETIAP
+// menu supervisi (permintaan pemilik). Menambah baru dibatasi; mengubah yang lama tetap boleh.
+if (!$edit && batas_supervisi_tercapai($iid)) {
+    aktivasi_halang('supervisi', 'supervisi.php?kode=' . urlencode($kode));
+}
+
 // Butir aktif dipakai untuk penilaian baru. Saat mengedit penilaian lama,
 // butir yang sudah diberi skor tetap ditampilkan walau statusnya nonaktif
 // supaya nilainya tidak hilang dari lembar penilaian.

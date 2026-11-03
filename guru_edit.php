@@ -12,6 +12,12 @@ if ($id && !$g) {
     redirect('guru.php');
 }
 
+// AKTIVASI: pada mode terbatas hanya boleh ada AKTIVASI_MAKS_GURU data guru (permintaan pemilik).
+// Mengubah/menghapus data guru yang sudah ada tetap boleh — yang dibatasi penambahannya.
+if (!$g && batas_guru_tercapai()) {
+    aktivasi_halang('guru', 'guru.php');
+}
+
 $form = [
     'nama'    => $g['nama'] ?? '',
     'nip'     => $g['nip'] ?? '',

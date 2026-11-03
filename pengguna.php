@@ -31,6 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($aksi === 'massal') {
+        // AKTIVASI: pembuatan akun massal hanya tersedia setelah sekolah diaktivasi.
+        if (aktivasi_terbatas()) {
+            aktivasi_halang('massal', 'pengguna.php');
+        }
         $belum = all('SELECT g.* FROM guru g WHERE g.aktif = 1 AND g.sekolah_id = ? AND NOT EXISTS (SELECT 1 FROM users u WHERE u.guru_id = g.id)', [$sid]);
         $n = 0;
         db()->exec('BEGIN IMMEDIATE');
@@ -122,7 +126,12 @@ page_top('Pengguna & Akun Sekolah', 'pengguna');
     </div>
     <form method="post" data-confirm="Buat akun login untuk <?= $jmlTanpaAkun ?> guru sekaligus?">
       <?= csrf_field() ?><input type="hidden" name="aksi" value="massal">
-      <button class="btn btn-primary" type="submit"><?= ikon('key', 16) ?> Buat <?= $jmlTanpaAkun ?> akun guru</button>
+      <?php if (aktivasi_terbatas()): ?>
+        <?php // AKTIVASI: pada mode terbatas tombolnya mengarah ke popup "Aplikasi Belum Diaktifasi". ?>
+        <a class="btn btn-ghost" href="aktivasi.php?batas=massal&amp;kembali=pengguna.php"><?= ikon('lock', 16) ?> Dibatasi — belum diaktifasi</a>
+      <?php else: ?>
+        <button class="btn btn-primary" type="submit"><?= ikon('key', 16) ?> Buat <?= $jmlTanpaAkun ?> akun guru</button>
+      <?php endif; ?>
     </form>
   </div>
 </div>
@@ -130,7 +139,7 @@ page_top('Pengguna & Akun Sekolah', 'pengguna');
 
 <div class="grid g12">
   <div class="card">
-    <div class="card-head"><div><h2>Tambah Pengguna</h2><p>Akun kepala sekolah/pengawas atau akun guru pada sekolah ini.</p></div></div>
+    <div class="card-head"><div><h2>Tambah Pengguna</h2><p>Akun kepala sekolah atau akun guru pada sekolah ini.</p></div></div>
     <form method="post" class="form-grid">
       <?= csrf_field() ?>
       <input type="hidden" name="aksi" value="tambah">
@@ -141,7 +150,7 @@ page_top('Pengguna & Akun Sekolah', 'pengguna');
       <div>
         <label class="f" for="role">Peran</label>
         <select id="role" name="role">
-          <option value="admin">Administrator / Kepala Sekolah / Pengawas (sekolah ini)</option>
+          <option value="admin">Administrator / Kepala Sekolah (sekolah ini)</option>
           <option value="guru">Guru (hanya melihat hasil sendiri)</option>
         </select>
       </div>

@@ -38,6 +38,22 @@ function ikon(string $name, int $size = 18): string
         'clipboard' => '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h6M9 18h4"/>',
         'book'      => '<path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h8M8 11h6"/>',
         'calendar2' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/><path d="M8 15h4"/>',
+        'clock'     => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+        'up'        => '<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>',
+        'down'      => '<path d="M12 5v14"/><path d="M6 13l6 6 6-6"/>',
+        'send'      => '<path d="M21 3L3 10l7 3 3 7z"/><path d="M21 3l-9 9"/>',
+        'message'   => '<path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/>',
+        // Tombol "Kirim WA" ke nomor HP/telepon lembaga (permintaan pemilik) — pesan aktivasi otomatis.
+        'whatsapp'  => '<path d="M20.5 11.8c0 4.1-3.8 7.4-8.5 7.4-1.1 0-2.2-.18-3.2-.5L4 20.5l1.5-4.1A6.9 6.9 0 0 1 3.5 11.8C3.5 7.7 7.3 4.4 12 4.4s8.5 3.3 8.5 7.4z"/><path d="M9.3 9.1c.3-.6.5-.7.9-.7h.5c.2 0 .4 0 .5.4l.6 1.4c.1.2 0 .4-.1.5l-.4.5c-.1.2-.2.3-.1.5.3.6 1.3 1.7 2.1 2 .2.1.3 0 .4-.1l.5-.5c.2-.2.3-.2.5-.1l1.4.7c.2.1.3.3.3.5 0 .7-.5 1.5-1.2 1.7-.6.2-1.3.2-2.6-.3-1.9-.8-3.6-2.5-4.4-4.4-.4-1-.4-1.7-.1-2.3z"/>',
+        // Kartu pembayaran (dipakai blok NOMINAL BIAYA AKTIVASI pada menu Status & Aktivasi).
+        'card'      => '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+        // Halaman depan (landing page) — menu Super Admin "Halaman Depan (Landing)".
+        'home'      => '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+        // Obrolan (kotak mengambang) & tombol tutup panelnya.
+        'chat'      => '<path d="M20.5 12.2c0 3.9-3.8 7-8.5 7-1 0-2-.15-2.9-.42L4 20.5l1.3-3.4C4.2 15.8 3.5 14.1 3.5 12.2c0-3.9 3.8-7 8.5-7s8.5 3.1 8.5 7z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/>',
+        'close'     => '<path d="M6 6l12 12M18 6L6 18"/>',
+        // Ikon TEMA TAMPILAN: tiga bulatan warna (palet) — dipakai menu "Tema Tampilan".
+        'palette'   => '<path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.8 3.4-3.6 3.4H15a2 2 0 0 0-1.4 3.4A1.9 1.9 0 0 1 12 21z"/><circle cx="7.6" cy="12" r="1.2"/><circle cx="10.2" cy="8.2" r="1.2"/><circle cx="14.6" cy="8.2" r="1.2"/>',
     ];
     $d = $p[$name] ?? $p['doc'];
     return '<svg class="ic" width="' . $size . '" height="' . $size . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $d . '</svg>';
@@ -88,7 +104,8 @@ function page_top(string $judul, string $menu = ''): void
 <link rel="stylesheet" href="assets/style.css?v=<?= e(APP_VERSION) ?>">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127891;</text></svg>">
 </head>
-<body>
+<?php // TEMA TAMPILAN: kelas body menentukan rona warna aplikasi (dipilih Super Admin). ?>
+<body class="<?= e(tema_kelas()) ?>">
 <div class="bg-deco" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
 
 <button class="nav-toggle" id="navToggle" aria-label="Buka menu"><?= ikon('slider', 20) ?></button>
@@ -105,6 +122,25 @@ function page_top(string $judul, string $menu = ''): void
 
   <nav class="nav">
     <?php if ($super): ?>
+      <?php
+      // ==========================================================================================
+      // SIDEBAR SUPER ADMIN — SUB MENU "LAYANAN" (permintaan pemilik, v1.18.0)
+      // ------------------------------------------------------------------------------------------
+      // *"Pada halaman super admin menu: akun pengawas, Biaya dan aktifasi, butir penilaian, jenis
+      //   dokumen, tentang aplikasi dan halaman depan (landing) jadikan sub menu di dalam menu
+      //   Layanan."*
+      //
+      // Sub menu memakai <details>/<summary> sehingga BUKA-TUTUPNYA bekerja TANPA JavaScript
+      // (klik judul → isinya muncul) dan otomatis terbuka bila salah satu isinya sedang dibuka.
+      // Yang TETAP di luar sub menu: Ringkasan Semua Sekolah, Kelola Sekolah, Pendaftaran Sekolah,
+      // Log Aktivitas, dan Akun (Saya) — sesuai daftar menu yang diminta.
+      // ==========================================================================================
+      $halamanLayanan = ['pengawas.php', 'biaya_aktivasi.php', 'tema_tampilan.php', 'instrumen.php',
+          'instrumen_butir.php', 'dokumen_jenis.php', 'tentang.php', 'landing.php', 'dokumen_semua.php'];
+      $layananAktif = in_array($here, $halamanLayanan, true);
+      $jmlPengawasTinjau = pengawas_menunggu_jumlah();
+      $jmlPesanLanding = landing_pesan_baru();
+      ?>
       <div class="nav-sec">Super Admin</div>
       <a class="nav-item <?= $here === 'index.php' && $semuaSekolah ? 'on' : '' ?>" href="index.php">
         <?= ikon('chart') ?><span>Ringkasan Semua Sekolah</span>
@@ -112,20 +148,72 @@ function page_top(string $judul, string $menu = ''): void
       <a class="nav-item <?= $here === 'sekolah.php' ? 'on' : '' ?>" href="sekolah.php">
         <?= ikon('building') ?><span>Kelola Sekolah</span>
       </a>
-      <a class="nav-item <?= $here === 'pengawas.php' ? 'on' : '' ?>" href="pengawas.php">
-        <?= ikon('eye') ?><span>Akun Pengawas</span>
-      </a>
       <?php $jmlMenunggu = jumlah_pendaftaran_menunggu(); ?>
       <a class="nav-item <?= $here === 'pendaftaran.php' ? 'on' : '' ?>" href="pendaftaran.php">
         <?= ikon('star') ?><span>Pendaftaran Sekolah<?= $jmlMenunggu > 0 ? ' (' . (int) $jmlMenunggu . ')' : '' ?></span>
         <?php if ($jmlMenunggu > 0): ?><span class="pill pill-warn" style="margin-left:auto">baru</span><?php endif; ?>
       </a>
-      <a class="nav-item <?= in_array($here, ['instrumen.php', 'instrumen_butir.php'], true) ? 'on' : '' ?>" href="instrumen.php">
-        <?= ikon('check') ?><span>Butir Penilaian (Global)</span>
-      </a>
+
+      <?php // LAYANAN — sub menu berisi halaman pengelolaan tingkat aplikasi (permintaan pemilik). ?>
+      <details class="nav-grup"<?= $layananAktif ? ' open' : '' ?>>
+        <summary class="nav-item">
+          <?= ikon('slider') ?><span>Layanan</span>
+          <?php if ($jmlPengawasTinjau > 0): ?>
+            <span class="pill pill-gold"><?= (int) $jmlPengawasTinjau ?> baru</span>
+          <?php elseif ($jmlPesanLanding > 0): ?>
+            <span class="pill pill-gold"><?= (int) $jmlPesanLanding ?> pesan</span>
+          <?php endif; ?>
+          <span class="nav-caret" aria-hidden="true"></span>
+        </summary>
+        <div class="nav-sub">
+          <a class="nav-item <?= $here === 'pengawas.php' ? 'on' : '' ?>" href="pengawas.php">
+            <?= ikon('eye') ?><span>Akun Pengawas</span>
+            <?php if ($jmlPengawasTinjau > 0): ?><span class="pill pill-warn" style="margin-left:auto" title="Akun pengawas dari pendaftaran yang belum ditinjau"><?= (int) $jmlPengawasTinjau ?> baru</span><?php endif; ?>
+          </a>
+          <?php // Biaya & WA Aktivasi: nominal biaya aktivasi pertama, biaya langganan, dan nomor WA HD
+                // Admin yang dipakai menu Status & Aktivasi seluruh sekolah. ?>
+          <a class="nav-item <?= $here === 'biaya_aktivasi.php' ? 'on' : '' ?>" href="biaya_aktivasi.php">
+            <?= ikon('card') ?><span>Biaya &amp; WA Aktivasi</span>
+            <?php if (!aktivasi_biaya_masih_bawaan()): ?><span class="pill pill-gray" style="margin-left:auto">diubah</span><?php endif; ?>
+          </a>
+          <?php // TEMA TAMPILAN (permintaan pemilik): mengganti rona warna aplikasi secara menyeluruh
+                // (halaman depan/landing sampai halaman akun). Lencana "diubah" bila bukan tema bawaan. ?>
+          <a class="nav-item <?= $here === 'tema_tampilan.php' ? 'on' : '' ?>" href="tema_tampilan.php">
+            <?= ikon('palette') ?><span>Tema Tampilan</span>
+            <?php if (!tema_masih_bawaan()): ?><span class="pill pill-gray" style="margin-left:auto" title="Tema bawaan sudah diganti"><?= e(tema_app()) ?></span><?php endif; ?>
+          </a>
+          <a class="nav-item <?= in_array($here, ['instrumen.php', 'instrumen_butir.php'], true) ? 'on' : '' ?>" href="instrumen.php">
+            <?= ikon('check') ?><span>Butir Penilaian (Global)</span>
+          </a>
+          <?php $jmlJenisDok = dokumen_jenis_jumlah(); ?>
+          <a class="nav-item <?= $here === 'dokumen_jenis.php' ? 'on' : '' ?>" href="dokumen_jenis.php">
+            <?= ikon('doc') ?><span>Jenis Dokumen (Global)</span>
+            <?php if ($jmlJenisDok > 0): ?><span class="pill pill-gray" style="margin-left:auto"><?= (int) $jmlJenisDok ?></span><?php endif; ?>
+          </a>
+          <a class="nav-item <?= $here === 'tentang.php' ? 'on' : '' ?>" href="tentang.php">
+            <?= ikon('info') ?><span>Tentang Aplikasi (Halaman Masuk)</span>
+          </a>
+          <?php // HALAMAN DEPAN (LANDING PAGE): beranda, fitur, keunggulan, testimoni, tentang, kontak.
+                // Lencana = jumlah pesan dari formulir kontak yang belum dibaca (permintaan pemilik). ?>
+          <a class="nav-item <?= $here === 'landing.php' ? 'on' : '' ?>" href="landing.php">
+            <?= ikon('home') ?><span>Halaman Depan (Landing)</span>
+            <?php if ($jmlPesanLanding > 0): ?>
+              <span class="pill pill-warn" style="margin-left:auto" title="Pesan kontak yang belum dibaca"><?= (int) $jmlPesanLanding ?> pesan</span>
+            <?php endif; ?>
+          </a>
+          <?php // SEMUA DOKUMEN MADRASAH (permintaan pemilik): seluruh dokumen yang diunggah kepala
+                // sekolah/madrasah, ditampilkan per sekolah & per TAHUN AJARAN (dari tanggal unggah).
+                $jmlDokSemua = dokumen_jumlah(); ?>
+          <a class="nav-item <?= $here === 'dokumen_semua.php' ? 'on' : '' ?>" href="dokumen_semua.php">
+            <?= ikon('folder') ?><span>Semua Dokumen Madrasah</span>
+            <?php if ($jmlDokSemua > 0): ?><span class="pill pill-gray" style="margin-left:auto"><?= (int) $jmlDokSemua ?></span><?php endif; ?>
+          </a>
+        </div>
+      </details>
+
       <?php $jmlOnline = log_jumlah_online(); ?>
       <a class="nav-item <?= in_array($here, ['log.php'], true) ? 'on' : '' ?>" href="log.php">
-        <?= ikon('eye') ?><span>Log Aktivitas</span>
+        <?= ikon('report') ?><span>Log Aktivitas</span>
         <?php if ($jmlOnline > 0): ?><span class="pill pill-ok" style="margin-left:auto" title="Pengguna yang sedang online"><?= (int) $jmlOnline ?> online</span><?php endif; ?>
       </a>
     <?php endif; ?>
@@ -134,6 +222,21 @@ function page_top(string $judul, string $menu = ''): void
       <div class="nav-sec">Rekap Supervisi</div>
       <a class="nav-item <?= $here === 'index.php' && !$sekolah ? 'on' : '' ?>" href="index.php">
         <?= ikon('building') ?><span>Sekolah Binaan (<?= count($binaanSaya) ?>)</span>
+      </a>
+      <?php
+      // Lencana: jumlah dokumen yang BELUM DITINJAU (permintaan pemilik: pengawas meninjau tiap
+      // dokumen → ditandai disetujui/direvisi/ditolak beserta keterangannya). Bila tidak ada yang
+      // menunggu, tampilkan jumlah seluruh dokumen binaan sebagai informasi.
+      $jmlDokBinaan = dokumen_jumlah_binaan((int) $u['id']);
+      $jmlDokMenunggu = dokumen_jumlah_status_binaan((int) $u['id'], 'menunggu');
+      ?>
+      <a class="nav-item <?= $here === 'dokumen_madrasah.php' ? 'on' : '' ?>" href="dokumen_madrasah.php">
+        <?= ikon('doc') ?><span>Dokumen Madrasah</span>
+        <?php if ($jmlDokMenunggu > 0): ?>
+          <span class="pill pill-warn" style="margin-left:auto" title="Dokumen yang belum ditinjau"><?= (int) $jmlDokMenunggu ?> baru</span>
+        <?php elseif ($jmlDokBinaan > 0): ?>
+          <span class="pill pill-gray" style="margin-left:auto"><?= (int) $jmlDokBinaan ?></span>
+        <?php endif; ?>
       </a>
       <?php if ($sekolah): ?>
         <a class="nav-item <?= in_array($here, ['laporan.php', 'supervisi_detail.php', 'cetak.php'], true) ? 'on' : '' ?>" href="laporan.php">
@@ -144,6 +247,10 @@ function page_top(string $judul, string $menu = ''): void
         </a>
         <a class="nav-item" href="laporan_export.php">
           <?= ikon('doc') ?><span>Unduh Rekap (CSV)</span>
+        </a>
+        <a class="nav-item <?= $here === 'aktivasi.php' ? 'on' : '' ?>" href="aktivasi.php">
+          <?= ikon('key') ?><span>Status Aktivasi</span>
+          <?php if (aktivasi_terbatas($sekolah)): ?><span class="pill <?= aktivasi_terkunci($sekolah) ? 'pill-err' : 'pill-warn' ?>" style="margin-left:auto"><?= e(aktivasi_pil_teks()) ?></span><?php endif; ?>
         </a>
       <?php endif; ?>
     <?php elseif ($sekolah && ($super || $u['role'] === 'admin')): ?>
@@ -169,6 +276,28 @@ function page_top(string $judul, string $menu = ''): void
         <?= ikon('report') ?><span>Laporan &amp; Rekap</span>
       </a>
 
+      <?php // SUSUN LAPORAN (permintaan pemilik): membuat dokumen laporan supervisi (kafer, kata
+            // pengantar, Bab 1-4 + tanda tangan kepala). Hanya kepala sekolah/madrasah & Super Admin
+            // dalam konteks sekolah — guru & pengawas tidak melihat menunya.
+            // Lembaga yang BELUM diaktivasi tidak dapat membukanya (permintaan pemilik); menunya
+            // tetap tampil dengan penanda "terkunci" supaya pengguna tahu sebabnya.
+            $__lapTerkunci = aktivasi_terbatas($sekolah); ?>
+      <a class="nav-item <?= in_array($here, ['laporan_susun.php', 'laporan_cetak.php'], true) ? 'on' : '' ?>" href="laporan_susun.php">
+        <?= ikon('doc') ?><span>Susun Laporan</span>
+        <?php if ($__lapTerkunci): ?><span class="pill pill-warn" style="margin-left:auto" title="Menu ini terbuka setelah aplikasi diaktivasi">terkunci</span><?php endif; ?>
+      </a>
+
+      <div class="nav-sec">Dokumen Pengawas</div>
+      <a class="nav-item <?= $here === 'dokumen_kirim.php' ? 'on' : '' ?>" href="dokumen_kirim.php">
+        <?= ikon('send') ?><span>Kirim Dokumen ke Pengawas</span>
+        <?php $jmlDokKirim = dokumen_jumlah((int) $sekolah['id']); if ($jmlDokKirim > 0): ?><span class="pill pill-gray" style="margin-left:auto"><?= (int) $jmlDokKirim ?></span><?php endif; ?>
+      </a>
+      <?php if ($super): ?>
+        <a class="nav-item <?= $here === 'dokumen_madrasah.php' ? 'on' : '' ?>" href="dokumen_madrasah.php">
+          <?= ikon('doc') ?><span>Dokumen Madrasah</span>
+        </a>
+      <?php endif; ?>
+
       <div class="nav-sec">Data Master</div>
       <a class="nav-item <?= in_array($here, ['guru.php', 'guru_edit.php'], true) ? 'on' : '' ?>" href="guru.php">
         <?= ikon('users') ?><span>Data Guru</span>
@@ -185,6 +314,10 @@ function page_top(string $judul, string $menu = ''): void
       <a class="nav-item <?= $here === 'pengaturan.php' ? 'on' : '' ?>" href="pengaturan.php">
         <?= ikon('slider') ?><span>Profil &amp; Pengaturan</span>
       </a>
+      <a class="nav-item <?= $here === 'aktivasi.php' ? 'on' : '' ?>" href="aktivasi.php">
+        <?= ikon('key') ?><span>Status &amp; Aktivasi</span>
+        <?php if (aktivasi_terbatas($sekolah)): ?><span class="pill <?= aktivasi_terkunci($sekolah) ? 'pill-err' : 'pill-warn' ?>" style="margin-left:auto"><?= e(aktivasi_pil_teks()) ?></span><?php endif; ?>
+      </a>
     <?php elseif ($u && $u['role'] === 'guru'): ?>
       <div class="nav-sec">Menu</div>
       <a class="nav-item <?= $here === 'index.php' ? 'on' : '' ?>" href="index.php">
@@ -192,6 +325,10 @@ function page_top(string $judul, string $menu = ''): void
       </a>
       <a class="nav-item <?= $here === 'laporan.php' ? 'on' : '' ?>" href="laporan.php">
         <?= ikon('report') ?><span>Laporan Saya</span>
+      </a>
+      <a class="nav-item <?= $here === 'aktivasi.php' ? 'on' : '' ?>" href="aktivasi.php">
+        <?= ikon('key') ?><span>Status &amp; Aktivasi</span>
+        <?php if (aktivasi_terbatas($sekolah)): ?><span class="pill <?= aktivasi_terkunci($sekolah) ? 'pill-err' : 'pill-warn' ?>" style="margin-left:auto"><?= e(aktivasi_pil_teks()) ?></span><?php endif; ?>
       </a>
     <?php endif; ?>
 
@@ -265,6 +402,53 @@ function page_top(string $judul, string $menu = ''): void
     </div>
   <?php endforeach; ?>
 
+  <?php if ($sekolah && aktivasi_terbatas($sekolah) && $here !== 'aktivasi.php'): ?>
+    <?php
+    // Tiga sebab mode terbatas dibedakan supaya pesannya tepat (permintaan pemilik):
+    //  (a) belum pernah diaktivasi & masa uji coba (15 hari) masih berjalan,
+    //  (b) belum pernah diaktivasi TETAPI masa uji coba-nya sudah habis → aplikasi terkunci,
+    //  (c) sudah pernah diaktivasi, tetapi MASA AKTIF 1 TAHUN sudah habis → minta kode baru.
+    $__aktStatus = aktivasi_status($sekolah);
+    $__aktUjiHabis = $__aktStatus['keadaan'] === 'uji_habis';
+    $__aktHabis = $__aktStatus['habis'] || $__aktUjiHabis;
+    ?>
+    <div class="alert alert-<?= $__aktHabis ? 'err alert-aktivasi-habis' : 'warn alert-aktivasi' ?>" id="bannerAktivasi">
+      <?= ikon($__aktHabis ? 'alert' : 'lock', 16) ?>
+      <?php if ($__aktUjiHabis): ?>
+        <span><b>Masa uji coba <?= (int) aktivasi_hari_uji() ?> hari sudah habis — aplikasi TERKUNCI.</b>
+          Sekolah ini <b>belum diaktivasi</b><?php
+          if ($__aktStatus['uji_sampai_ts'] > 0) {
+              echo ' dan masa uji cobanya berakhir pada <b>' . e(waktu_id_polos($__aktStatus['uji_sampai'])) . '</b>';
+          }
+          ?>, jadi <b>seluruh akun tidak dapat memakai fitur</b> sampai kode aktifasi dimasukkan.
+          <b>Data sebelumnya tetap aman</b> (tidak ada yang dihapus). <b>Hubungi HD Admin untuk meminta
+          kode aktifasi</b><?= AKTIVASI_WA_ADMIN !== '' ? ' (WA ' . e(AKTIVASI_WA_ADMIN) . ')' : '' ?>.</span>
+      <?php elseif ($__aktHabis): ?>
+        <span><b>Masa aktif aplikasi sudah habis — aplikasi TERKUNCI.</b> Masa aktif
+          <?= (int) aktivasi_hari() ?> hari (1 tahun) berakhir pada
+          <b><?= e(waktu_id_polos($__aktStatus['sampai'])) ?></b>, jadi <b>seluruh akun tidak dapat
+          memakai fitur</b> sampai kode aktifasi yang baru dimasukkan. <b>Data sebelumnya tetap aman</b>
+          (tidak ada yang dihapus). <b>Hubungi HD Admin untuk meminta kode aktifasi yang baru</b><?= AKTIVASI_WA_ADMIN !== '' ? ' (WA ' . e(AKTIVASI_WA_ADMIN) . ')' : '' ?>.</span>
+      <?php else: ?>
+        <span><b>Aplikasi belum diaktifasi.</b> Sekolah ini masih memakai <b>mode terbatas</b>
+          (maksimal <?= (int) AKTIVASI_MAKS_GURU ?> data guru, <?= (int) AKTIVASI_MAKS_SUPERVISI_MENU ?> supervisi
+          pada setiap menu, <?= (int) AKTIVASI_MAKS_JADWAL ?> baris jadwal supervisi,
+          <?= (int) AKTIVASI_MAKS_DOKUMEN ?> dokumen kiriman ke pengawas; menu Susun Laporan belum
+          dapat dibuka).<?php
+          // MASA UJI COBA 30 HARI (permintaan pemilik): sekolah yang belum diaktivasi hanya diberi
+          // waktu terbatas sejak terdaftar — ditampilkan sisa harinya supaya pengguna tahu.
+          if ($__aktStatus['uji_sampai_ts'] > 0) {
+              echo ' <b>Masa uji coba ' . (int) aktivasi_hari_uji() . ' hari</b> berakhir pada <b>'
+                  . e(waktu_id_polos($__aktStatus['uji_sampai'])) . '</b> (sisa '
+                  . (int) $__aktStatus['uji_sisa_hari'] . ' hari).';
+          }
+          ?>
+          <b>Segera lakukan aktifasi agar semua fitur bisa digunakan.</b></span>
+      <?php endif; ?>
+      <a class="btn <?= $__aktHabis ? 'btn-danger' : 'btn-primary' ?> btn-sm" href="aktivasi.php" style="margin-left:auto"><?= ikon('key', 15) ?> Status &amp; Aktivasi</a>
+    </div>
+  <?php endif; ?>
+
   <div class="content">
 <?php
 }
@@ -279,6 +463,14 @@ function page_bottom(): void
     <span>Dikembangkan oleh <?= e(APP_AUTHOR) ?> (<?= e(APP_AUTHOR_JABATAN) ?>)</span>
   </footer>
 </main>
+<?php
+// POPUP PERINGATAN MASA AKTIF AKAN BERAKHIR (permintaan pemilik) — dicetak dari sini supaya
+// tampil di SEMUA halaman berpengguna; halaman cetak tidak memakai layout jadi tidak ikut.
+aktivasi_ingat_render();
+// KOTAK OBROLAN MENGAMBANG — satu ruang per sekolah/madrasah binaan (permintaan pemilik).
+// Dicetak dari sini supaya tampil di SEMUA halaman berpengguna; halaman cetak tidak memakai layout.
+chat_kotak();
+?>
 <script src="assets/app.js?v=<?= e(APP_VERSION) ?>"></script>
 </body>
 </html>
@@ -286,12 +478,88 @@ function page_bottom(): void
     terjemahkan_selesai();
 }
 
+/**
+ * POPUP PERINGATAN MASA AKTIF AKAN BERAKHIR (permintaan pemilik).
+ *
+ * "Tambahkan peringatan popup masa aktif akan berakhir untuk Lembaga yang masa aktifnya sisa 7 hari
+ *  sampai sisa 1 hari sebelum benar-benar terkunci."
+ *
+ * Dicetak dari page_bottom() supaya tampil di semua halaman berpengguna (lembar cetak tidak memakai
+ * layout). Dialog dicetak dengan atribut `open` supaya tetap terbaca walau skrip gagal dimuat;
+ * initIngatAktivasi() (assets/app.js) menaikkannya menjadi modal dan mengingat penutupannya selama
+ * sesi peramban (sessionStorage) agar tidak menutupi halaman berulang-ulang.
+ */
+function aktivasi_ingat_render(): void
+{
+    if (PHP_SAPI === 'cli') {
+        return;
+    }
+    $sekolah = current_sekolah();
+    $u = current_user();
+    if (!$sekolah || !$u) {
+        return;
+    }
+    $here = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    if ($here === 'aktivasi.php') {
+        return;   // halaman Status & Aktivasi sudah menjelaskan semuanya
+    }
+    // Hanya pengguna LEMBAGA itu (kepala/admin & guru). Super Admin & pengawas bukan pemilik
+    // masa aktif lembaga — mereka tidak perlu diperingatkan.
+    if (!in_array((string) $u['role'], ['admin', 'guru'], true)) {
+        return;
+    }
+    $info = aktivasi_peringatan($sekolah);
+    if ($info === null) {
+        return;
+    }
+    $bolehAktivasi = boleh_aktivasi();
+    $kunci = (int) $sekolah['id'] . ':' . $info['jenis'] . ':' . (int) $info['sampai_ts'];
+    $sisaJam = intdiv(max(0, (int) $info['sisa_detik']), 3600);
+    ?>
+<dialog class="popup popup-aktivasi popup-ingat" id="popupIngatAktivasi" open
+        data-kunci="<?= e($kunci) ?>" data-jenis="<?= e($info['jenis']) ?>">
+  <div class="popup-isi">
+    <div class="popup-ic"><?= ikon('clock', 26) ?></div>
+    <h2><?= e($info['judul']) ?></h2>
+    <p class="popup-lead"><?= e($info['lead']) ?></p>
+    <div class="alert alert-warn" style="margin:0 0 12px">
+      <?= ikon('alert', 16) ?>
+      <span><b>Sisa <?= (int) $info['sisa_hari'] ?> hari</b> (± <?= (int) $sisaJam ?> jam) sebelum
+        masa <?= $info['jenis'] === 'uji' ? 'uji coba' : 'aktif' ?> ini habis dan <b>aplikasi terkunci</b>.
+        Seluruh data yang sudah ada <b>tetap aman</b> (tidak ada yang dihapus).</span>
+    </div>
+    <table class="tbl tbl-ringkas">
+      <tbody>
+        <tr><td>Sekolah/madrasah</td><td><b><?= tetap_kata((string) $sekolah['nama']) ?></b></td></tr>
+        <tr><td>Berakhir</td><td><b><?= e(waktu_id_polos((string) $info['sampai'])) ?></b></td></tr>
+        <tr><td>Cara memperpanjang</td><td>
+          <?php if ($bolehAktivasi): ?>
+            Masukkan <b>kode aktivasi</b> yang dikirim Admin aplikasi pada menu <b>Status &amp; Aktivasi</b>.
+          <?php else: ?>
+            Minta <b>kepala sekolah/madrasah</b> memasukkan kode aktivasi yang dikirim Admin aplikasi
+            pada menu <b>Status &amp; Aktivasi</b>.
+          <?php endif; ?>
+        </td></tr>
+      </tbody>
+    </table>
+    <div class="popup-aksi">
+      <a class="btn btn-primary" href="aktivasi.php"><?= ikon('key', 16) ?>
+        <?= $bolehAktivasi ? 'Lakukan Aktivasi Sekarang' : 'Lihat Status Aktivasi' ?></a>
+      <button class="btn btn-ghost" type="button" data-popup-tutup>Nanti</button>
+    </div>
+  </div>
+</dialog>
+    <?php
+}
+
 /** Tutup penampung keluaran halaman dan terapkan penyesuaian istilah Sekolah/Madrasah. */
 function terjemahkan_selesai(): void
 {
     $level = (int) ($GLOBALS['__vs_buf_level'] ?? 0);
     if ($level > 0 && ob_get_level() === $level) {
-        echo terjemahkan_html((string) ob_get_clean());
+        // Jaring pengaman TERAKHIR: penanda internal tetap_kata() tidak boleh pernah sampai
+        // ke peramban (akan tampil sebagai kotak pada nama resmi sekolah/madrasah).
+        echo buang_penanda(terjemahkan_html((string) ob_get_clean()));
         $GLOBALS['__vs_buf_level'] = 0;
     }
 }

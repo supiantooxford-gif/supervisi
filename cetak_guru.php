@@ -185,7 +185,7 @@ $autoPrint = isset($_GET['auto']);
   @page{size:A4 landscape;margin:12mm}
 </style>
 </head>
-<body>
+<body class="<?= e(tema_kelas()) ?>">
 <div class="bg-deco" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
 
 <!-- ==================== Panel pengaturan (tidak ikut tercetak) ==================== -->
@@ -290,7 +290,9 @@ $autoPrint = isset($_GET['auto']);
       <div class="kop-teks">
       <h2>Daftar Data Guru dan Akun</h2>
       <p><?= e(tetap_kata(setting('nama_sekolah', 'Sekolah'))) ?></p>
-      <p style="font-size:.78rem"><?= e(setting('alamat_sekolah', '-')) ?> &middot; NPSN <?= e(setting('npsn', '-')) ?></p>
+      <?php foreach (kop_baris_identitas() as $bk): ?>
+        <p style="font-size:.78rem"><?= e(tetap_kata($bk)) ?></p>
+      <?php endforeach; ?>
       </div>
     </div>
 
@@ -377,13 +379,16 @@ $autoPrint = isset($_GET['auto']);
 
     <div class="sheet-foot">
       <div class="sheet-sign">
-        <div>Mengetahui,<br>Kepala Sekolah</div>
+        <div><?= ttd_mengetahui_html() ?></div>
         <div class="space"></div>
         <u><?= e(setting('kepala_sekolah', '-')) ?></u><br>
         <span class="sm">NIP. <?= e(setting('nip_kepala_sekolah', '-')) ?></span>
       </div>
       <div class="sheet-sign">
-        <div><?= e(tanggal_id(date('Y-m-d'))) ?><br>Operator / Administrator</div>
+        <?php // Baris "tempat, tanggal" di atas nama penanda tangan sisi kanan (permintaan pemilik) —
+              // sebelumnya hanya tanggalnya; kini disambung nama Kecamatan dari identitas lembaga. ?>
+        <div class="ttd-tempat"><?= e(ttd_tempat_tanggal()) ?></div>
+        <div>Operator / Administrator</div>
         <div class="space"></div>
         <u><?= e((string) ($u['nama'] ?? '-')) ?></u><br>
         <span class="sm"><?= e((string) ($u['username'] ?? '')) ?></span>

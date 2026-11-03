@@ -26,6 +26,37 @@ if ($pengawas && (int) ($_GET['sekolah'] ?? 0) > 0) {
 $sekolah = require_sekolah();
 $sid = (int) $sekolah['id'];
 $admin = is_admin();
+
+// ---------------------------------------------------------------- KOMENTAR / TINDAK LANJUT PENGAWAS
+// Permintaan pemilik: pengawas mengomentari seluruh hasil rekapan supervisi setiap madrasah, dan
+// komentarnya "terkirim" ke akun kepala madrasah untuk dilihat. Pilihan pemilik: SATU komentar per
+// madrasah (boleh diperbarui pengawas) dan kepala madrasah HANYA membaca (tanpa balasan).
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Peran diperiksa SEBELUM CSRF: pengguna yang tidak berhak memang tidak pernah melihat
+    // formulirnya, jadi jawabannya harus 403 (bukan 419) — pola yang sama dengan aktivasi.php.
+    if (!$pengawas) {
+        http_response_code(403);
+        exit('Hanya pengawas sekolah/madrasah yang dapat mengirim komentar tindak lanjut.');
+    }
+    csrf_guard();
+    $aksiK = (string) ($_POST['aksi'] ?? '');
+    if ($aksiK === 'komentar_simpan') {
+        $isi = komentar_potong((string) ($_POST['komentar'] ?? ''), (int) KOMENTAR_MAKS);
+        if ($isi === '') {
+            // Mengosongkan isi = menghapus komentar (supaya pengawas dapat membatalkan komentarnya).
+            if (komentar_pengawas_hapus($sid, (int) $u['id'])) {
+                flash('Komentar tindak lanjut untuk ' . $sekolah['nama'] . ' dihapus.', 'warn');
+            } else {
+                flash('Belum ada komentar yang dapat dihapus untuk sekolah/madrasah ini.', 'warn');
+            }
+        } else {
+            komentar_pengawas_simpan($sid, (int) $u['id'], $isi);
+            flash('Komentar tindak lanjut untuk ' . $sekolah['nama'] . ' terkirim ke akun kepala sekolah/madrasah.');
+        }
+        redirect('laporan.php#cardKomentar');
+    }
+    redirect('laporan.php');
+}
 $bolehFilterGuru = $admin || $pengawas;
 
 $instList = instrumen_list(false);
@@ -119,6 +150,11 @@ foreach (['A', 'B', 'C', 'D'] as $pr) {
 $guruList = $bolehFilterGuru ? all('SELECT id, nama, mapel FROM guru WHERE sekolah_id = ? ORDER BY nama', [$sid]) : [];
 $qs = $_GET;
 $exportUrl = 'laporan_export.php?' . http_build_query($qs);
+
+// Komentar pengawas untuk madrasah ini (kepala madrasah membacanya; pengawas melihat & menyunting
+// komentarnya sendiri). Guru tidak melihat kartu ini.
+$komentarSaya = $pengawas ? komentar_pengawas_saya($sid, (int) $u['id']) : null;
+$komentarList = (!$pengawas && $u['role'] === 'guru') ? [] : komentar_pengawas_list($sid);
 
 page_top('Laporan & Rekap Supervisi', 'laporan');
 ?>
@@ -321,5 +357,78 @@ document.addEventListener('DOMContentLoaded', function () {
   <?php endif; ?>
 });
 </script>
+<?php if ($pengawas || ($u['role'] === 'admin' || is_super())): ?>
+  <?php // ---- KARTU KOMENTAR / TINDAK LANJUT PENGAWAS (permintaan pemilik) ----
+        // Pengawas: menulis/memperbarui komentar untuk SELURUH rekapan madrasah ini.
+        // Kepala sekolah/madrasah: membaca komentar yang dikirim pengawas (tanpa balasan). ?>
+  <div class="card" id="cardKomentar">
+    <div class="card-head">
+      <div>
+        <h2><?= ikon('message', 18) ?> Komentar &amp; Tindak Lanjut Pengawas</h2>
+        <p><?= $pengawas
+          ? 'Komentar ini untuk <b>seluruh hasil rekapan</b> ' . e(tetap_kata((string) $sekolah['nama']))
+            . ' dan langsung terkirim ke akun kepala sekolah/madrasah.'
+          : 'Komentar/tindak lanjut dari pengawas untuk rekapan sekolah/madrasah ini.' ?></p>
+      </div>
+      <span class="chip"><?= count($komentarList) ?> komentar</span>
+    </div>
+
+    <?php if ($pengawas): ?>
+      <form method="post" class="komentar-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="aksi" value="komentar_simpan">
+        <label class="f" for="komentar">Komentar / Tindak Lanjut untuk <?= e(tetap_kata((string) $sekolah['nama'])) ?></label>
+        <textarea id="komentar" name="komentar" rows="5" maxlength="<?= (int) KOMENTAR_MAKS ?>"
+                  placeholder="mis. Secara umum supervisi sudah baik. Tindak lanjut: perbaiki RPP pada indikator ... dan lengkapi bukti fisik."><?= e((string) ($komentarSaya['isi'] ?? '')) ?></textarea>
+        <div class="hint">
+          Komentar yang <b>dikosongkan lalu disimpan</b> akan menghapus komentar Anda untuk sekolah ini.
+          Satu komentar berlaku untuk seluruh rekapan madrasah ini dan tidak dapat dibalas oleh kepala
+          sekolah/madrasah (sesuai permintaan Anda).
+        </div>
+        <div class="form-actions">
+          <?php // Label panjang ini tidak boleh membuat halaman meluber di HP 390px
+                // (kelas .btn-komentar mengizinkan teksnya membungkus — lihat assets/style.css). ?>
+          <button class="btn btn-primary btn-komentar" type="submit"><?= ikon('send', 16) ?> Kirim Komentar ke Kepala Sekolah/Madrasah</button>
+          <span class="xs mut"><?php
+            if ($komentarSaya) {
+              echo 'Terakhir diperbarui ' . e(waktu_id_polos((string) ($komentarSaya['diubah'] ?: $komentarSaya['dibuat'])));
+            } else {
+              echo 'Belum ada komentar dari Anda untuk sekolah ini.';
+            }
+          ?></span>
+        </div>
+      </form>
+    <?php endif; ?>
+
+    <?php if ($komentarList): ?>
+      <div class="komentar-list mt16">
+        <?php foreach ($komentarList as $k): ?>
+          <div class="komentar-item">
+            <div class="komentar-head">
+              <b><?= e((string) ($k['pengawas'] ?: 'Pengawas')) ?></b>
+              <span class="pill pill-gray">Pengawas</span>
+              <span class="xs mut"><?= e(waktu_id_polos((string) ($k['diubah'] ?: $k['dibuat']))) ?></span>
+              <?php if ($pengawas && (int) $k['pengawas_id'] === (int) $u['id']): ?>
+                <span class="pill pill-ok" style="margin-left:auto">Komentar Anda</span>
+              <?php endif; ?>
+            </div>
+            <p class="komentar-isi"><?= nl2br(e((string) $k['isi'])) ?></p>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <?php if (!$pengawas): ?>
+        <p class="hint" style="margin-top:12px">Komentar ini dikirim pengawas untuk rekapan
+          <b><?= e(tetap_kata((string) $sekolah['nama'])) ?></b> dan menjadi bahan tindak lanjut.
+          Komentar juga tampil pada dasbor akun kepala sekolah/madrasah.</p>
+      <?php endif; ?>
+    <?php elseif (!$pengawas): ?>
+      <div class="alert alert-warn" style="margin:0">
+        <?= ikon('info', 16) ?>
+        <span>Belum ada komentar/tindak lanjut dari pengawas untuk sekolah/madrasah ini.</span>
+      </div>
+    <?php endif; ?>
+  </div>
+<?php endif; ?>
+
 <?php
 page_bottom();

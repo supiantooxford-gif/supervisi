@@ -180,7 +180,7 @@ $GLOBALS['__vs_buf_level'] = ob_get_level();
   @page{size:A4 portrait;margin:14mm}
 </style>
 </head>
-<body>
+<body class="<?= e(tema_kelas()) ?>">
 <div class="bg-deco" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
 
 <div class="toolbar no-print">
@@ -206,7 +206,9 @@ $GLOBALS['__vs_buf_level'] = ob_get_level();
       <div class="kop-teks">
         <h2>Daftar Butir Penilaian</h2>
         <p><?= e(tetap_kata((string) $sekolah['nama'])) ?></p>
-        <p style="font-size:.78rem"><?= e((string) ($sekolah['alamat'] ?: '-')) ?> &middot; NPSN <?= e((string) ($sekolah['npsn'] ?: '-')) ?></p>
+        <?php foreach (kop_baris_identitas() as $bk): ?>
+          <p style="font-size:.78rem"><?= e(tetap_kata($bk)) ?></p>
+        <?php endforeach; ?>
         <p class="sheet-menu"><b>Menu Supervisi:</b> <?= e((string) $ins['nama']) ?></p>
       </div>
     </div>
@@ -251,10 +253,12 @@ $GLOBALS['__vs_buf_level'] = ob_get_level();
       Nilai akhir dihitung dari jumlah skor perolehan dibagi total skor maksimal dikali 100.
     </p>
 
-    <!-- Tanda tangan: hanya kepala sekolah, diletakkan di sisi KANAN lembar. -->
+    <!-- Tanda tangan: hanya kepala sekolah, diletakkan di sisi KANAN lembar.
+         Baris "tempat, tanggal" di atas nama kepala (permintaan pemilik). -->
     <div class="sheet-foot">
       <div class="sheet-sign sheet-sign-kanan">
-        <div>Mengetahui,<br>Kepala Sekolah</div>
+        <div class="ttd-tempat"><?= e(ttd_tempat_tanggal()) ?></div>
+        <div><?= ttd_mengetahui_html() ?></div>
         <div class="space"></div>
         <u><?= e($kepalaSekolah) ?></u><br>
         <span class="sm">NIP. <?= e($nipKepala !== '' ? $nipKepala : '-') ?></span>

@@ -46,6 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('log.php');
     }
 
+    if ($aksi === 'hapus_riwayat') {
+        // Permintaan pemilik: hapus SATU baris riwayat tertentu (mis. percobaan masuk yang keliru).
+        $id = (int) ($_POST['id'] ?? 0);
+        $r = $id > 0 ? one('SELECT * FROM log_aktivitas WHERE id = ?', [$id]) : null;
+        if (!$r) {
+            flash('Baris riwayat tidak ditemukan (mungkin sudah dihapus).', 'err');
+        } else {
+            q('DELETE FROM log_aktivitas WHERE id = ?', [$id]);
+            $nama = trim((string) ($r['nama'] ?? '')) !== '' ? (string) $r['nama'] : (string) ($r['username'] ?? '');
+            flash('Riwayat ' . ($nama !== '' ? $nama . ' — ' : '') . waktu_id_polos((string) $r['waktu'])
+                . ' (' . ($AKSI[(string) $r['aktivitas']] ?? (string) $r['aktivitas']) . ') dihapus.', 'warn');
+        }
+        // Kembali ke halaman & filter yang sama supaya konteks pengguna tidak hilang.
+        $kembali = trim((string) ($_POST['kembali'] ?? ''));
+        redirect($kembali !== '' && strncmp($kembali, 'log.php', 7) === 0 ? $kembali : 'log.php');
+    }
+
     if ($aksi === 'bersihkan_online') {
         $n = log_sesi_bersihkan(1);
         flash($n > 0
@@ -90,12 +107,21 @@ if ($fSampai !== null) {
 }
 $where = $w ? ' WHERE ' . implode(' AND ', $w) : '';
 
-// Paginasi riwayat.
-$perHal = 40;
+// Paginasi riwayat: 10 baris terakhir per halaman (permintaan pemilik), sisanya lewat tombol
+// "Selanjutnya" — supaya halaman tidak terlalu panjang.
+$perHal = 10;
 $totalRiwayat = (int) val('SELECT COUNT(*) FROM log_aktivitas' . $where, $p, 0);
 $jmlHal = max(1, (int) ceil($totalRiwayat / $perHal));
 $hal = max(1, min($jmlHal, (int) ($_GET['hal'] ?? 1)));
 $rows = all('SELECT * FROM log_aktivitas' . $where . ' ORDER BY waktu DESC, id DESC LIMIT ' . $perHal . ' OFFSET ' . (($hal - 1) * $perHal), $p);
+
+// Alamat halaman + filter yang sedang dilihat — dikirim balik setelah menghapus satu baris
+// supaya pengguna tetap berada di halaman/filter yang sama.
+$qFilterAwal = array_filter(['cari' => $fCari, 'aktivitas' => $fAksi, 'dari' => $fDari, 'sampai' => $fSampai],
+    static fn($v) => $v !== '' && $v !== null);
+$tautanSendiri = 'log.php' . ($qFilterAwal || $hal > 1
+    ? '?' . http_build_query(array_merge($qFilterAwal, $hal > 1 ? ['hal' => $hal] : []))
+    : '');
 
 // ---------- Sedang online ----------
 log_sesi_bersihkan(2);   // catatan sesi yang sudah lama tidak aktif dibuang (riwayat tidak disentuh)
@@ -109,7 +135,7 @@ $jumlahGagalHariIni = (int) val('SELECT COUNT(*) FROM log_aktivitas WHERE aktivi
 $jumlahKeluarHariIni = (int) val('SELECT COUNT(*) FROM log_aktivitas WHERE aktivitas = "keluar" AND waktu >= ?', [$hariIni . ' 00:00:00'], 0);
 $terakhir = one('SELECT * FROM log_aktivitas ORDER BY waktu DESC, id DESC LIMIT 1');
 $perambanUmum = all('SELECT peramban, COUNT(*) AS jml FROM log_aktivitas WHERE peramban IS NOT NULL GROUP BY peramban ORDER BY jml DESC LIMIT 5');
-$qFilter = array_filter(['cari' => $fCari, 'aktivitas' => $fAksi, 'dari' => $fDari, 'sampai' => $fSampai], static fn($v) => $v !== '' && $v !== null);
+$qFilter = $qFilterAwal;
 
 // Istilah "Sekolah" pada halaman ini tetap generik (sekolah umum + madrasah sekaligus).
 page_top('Log Aktivitas', 'log');
@@ -217,8 +243,10 @@ page_top('Log Aktivitas', 'log');
   <div class="card-head">
     <div>
       <h2>Riwayat Masuk &amp; Keluar</h2>
-      <p>Seluruh riwayat, termasuk percobaan masuk yang gagal (sandi salah, akun atau sekolah nonaktif).
-        Nama sekolah dan akun disimpan apa adanya pada saat kejadian.</p>
+      <p>Ditampilkan <b><?= (int) $perHal ?> riwayat terakhir per halaman</b> — gunakan tombol
+        <b>Selanjutnya</b> untuk melihat riwayat yang lebih lama. Isinya seluruh aktivitas, termasuk
+        percobaan masuk yang gagal (sandi salah, akun atau sekolah nonaktif). Nama sekolah dan akun
+        disimpan apa adanya pada saat kejadian, dan setiap baris dapat dihapus bila salah catat.</p>
     </div>
   </div>
 
@@ -263,7 +291,7 @@ page_top('Log Aktivitas', 'log');
         <thead>
           <tr>
             <th>Tanggal &amp; Jam</th><th>Nama</th><th>Peran</th><th>Asal</th>
-            <th class="ctr">Aktivitas</th><th>IP</th><th>Peramban</th>
+            <th class="ctr">Aktivitas</th><th>IP</th><th>Peramban</th><th class="ctr">Tindakan</th>
           </tr>
         </thead>
         <tbody>
@@ -291,6 +319,19 @@ page_top('Log Aktivitas', 'log');
             </td>
             <td class="xs nowrap"><?= e((string) ($r['ip'] ?: '-')) ?></td>
             <td class="xs"><?= e((string) ($r['peramban'] ?: '-')) ?></td>
+            <td class="ctr">
+              <?php // Permintaan pemilik: hapus SATU baris riwayat (mis. percobaan masuk yang keliru).
+              // Memakai waktu_id_polos(): di dalam atribut, entitas "&middot;" akan ter-escape menjadi
+              // teks "&middot;" yang benar-benar tampil pada dialog konfirmasi. ?>
+              <form method="post"
+                    data-confirm="Hapus riwayat ini?&#10;<?= e($nama) ?> — <?= e(waktu_id_polos((string) $r['waktu'])) ?>&#10;Penghapusan tidak dapat dibatalkan.">
+                <?= csrf_field() ?>
+                <input type="hidden" name="aksi" value="hapus_riwayat">
+                <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                <input type="hidden" name="kembali" value="<?= e($tautanSendiri) ?>">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Hapus riwayat ini"><?= ikon('trash', 14) ?></button>
+              </form>
+            </td>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -299,8 +340,9 @@ page_top('Log Aktivitas', 'log');
 
     <?php if ($jmlHal > 1): ?>
       <div class="flex between mt16" style="flex-wrap:wrap;gap:10px">
-        <span class="xs mut">Menampilkan <?= (($hal - 1) * $perHal) + 1 ?>–<?= min($totalRiwayat, $hal * $perHal) ?>
-          dari <?= $totalRiwayat ?> baris</span>
+        <?php $barisAwal = (($hal - 1) * $perHal) + 1; $barisAkhir = min($totalRiwayat, $hal * $perHal); ?>
+        <span class="xs mut">Menampilkan <?= $barisAwal ?>&ndash;<?= $barisAkhir ?> dari <?= $totalRiwayat ?> baris
+          (<?= (int) $perHal ?> terakhir per halaman)</span>
         <div class="flex" style="gap:6px">
           <?php
           $tautanHal = static function (int $n) use ($qFilter): string {
@@ -313,7 +355,7 @@ page_top('Log Aktivitas', 'log');
           <?php endif; ?>
           <span class="chip">Halaman <?= $hal ?> / <?= $jmlHal ?></span>
           <?php if ($hal < $jmlHal): ?>
-            <a class="btn btn-ghost btn-sm" href="<?= e($tautanHal($hal + 1)) ?>">Berikutnya &rarr;</a>
+            <a class="btn btn-primary btn-sm" href="<?= e($tautanHal($hal + 1)) ?>">Selanjutnya: <?= (int) min($perHal, $totalRiwayat - $hal * $perHal) ?> baris berikutnya &rarr;</a>
             <a class="btn btn-ghost btn-sm" href="<?= e($tautanHal($jmlHal)) ?>">Akhir</a>
           <?php endif; ?>
         </div>

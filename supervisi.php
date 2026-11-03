@@ -22,6 +22,13 @@ if (!$ins) {
 }
 $iid = (int) $ins['id'];
 
+// AKTIVASI (permintaan pemilik): pada mode terbatas hanya boleh ada 1 penilaian per menu supervisi.
+// Bila sudah tercapai, tombol "Penilaian Baru" mengarah ke popup "Aplikasi Belum Diaktifasi".
+$batasMenu = batas_supervisi_tercapai($iid);
+$tautanBaru = $batasMenu
+    ? 'aktivasi.php?batas=supervisi&amp;kembali=' . urlencode('supervisi.php?kode=' . $kode)
+    : 'supervisi_form.php?kode=' . urlencode($kode);
+
 // ---------- Aksi ----------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_guard();
@@ -119,7 +126,7 @@ page_top((string) $ins['nama'], $kode);
         <a class="btn btn-ghost" href="cetak_butir.php?kode=<?= e($kode) ?>" title="Cetak daftar butir aktif menu ini"><?= ikon('print', 16) ?> Cetak Daftar Butir</a>
       <?php endif; ?>
       <?php if ($admin): ?>
-        <a class="btn btn-primary" href="supervisi_form.php?kode=<?= e($kode) ?>"><?= ikon('plus', 16) ?> Penilaian Baru</a>
+        <a class="btn btn-primary" href="<?= $tautanBaru ?>"><?= ikon('plus', 16) ?> Penilaian Baru</a>
       <?php endif; ?>
     </div>
   </div>
@@ -228,7 +235,7 @@ page_top((string) $ins['nama'], $kode);
       <h3>Belum ada data supervisi</h3>
       <p><?= $admin ? 'Mulai lakukan penilaian untuk menu ini.' : 'Belum ada hasil supervisi untuk Anda pada menu ini.' ?></p>
       <?php if ($admin): ?>
-        <a class="btn btn-primary" href="supervisi_form.php?kode=<?= e($kode) ?>"><?= ikon('plus', 16) ?> Penilaian Baru</a>
+        <a class="btn btn-primary" href="<?= $tautanBaru ?>"><?= ikon('plus', 16) ?> Penilaian Baru</a>
       <?php endif; ?>
     </div>
   <?php else: ?>

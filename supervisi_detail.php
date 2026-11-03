@@ -155,7 +155,7 @@ if ($kartuFotoPenuh) {
         <thead><tr><th>Tanggal</th><th>Menu Supervisi</th><th class="ctr">Nilai</th><th class="ctr">Predikat</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($riwayat as $r): ?>
-          <tr <?= (int) $r['id'] === $id ? 'style="background:rgba(79,70,229,.07)"' : '' ?>>
+          <tr <?= (int) $r['id'] === $id ? 'style="background:rgba(var(--accent-rgb),.07)"' : '' ?>>
             <td class="nowrap"><?= e(tanggal_id((string) $r['tanggal'])) ?></td>
             <td><?= e((string) $r['instrumen']) ?></td>
             <td class="ctr"><b><?= r1($r['nilai']) ?></b></td>

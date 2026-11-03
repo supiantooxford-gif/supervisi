@@ -72,11 +72,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         db()->exec('BEGIN IMMEDIATE');
         try {
             $jenisBaru = (array_key_exists('jenis_sekolah', $_POST) && $_POST['jenis_sekolah'] === 'madrasah') ? 'madrasah' : 'umum';
-            q('INSERT INTO sekolah (nama, npsn, alamat, kepala_sekolah, nip_kepala_sekolah, tahun_ajaran, semester, batas_a, batas_b, batas_c, catatan, aktif, jenis, dibuat)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)', [
+            q('INSERT INTO sekolah (nama, npsn, nsm, alamat, desa, kecamatan, kabupaten, provinsi, telepon, email, website,
+                    kepala_sekolah, nip_kepala_sekolah, tahun_ajaran, semester, batas_a, batas_b, batas_c, catatan, aktif, jenis, dibuat)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)', [
                 $nama,
                 trim((string) ($_POST['npsn'] ?? '')) ?: '-',
+                trim((string) ($_POST['nsm'] ?? '')),
                 trim((string) ($_POST['alamat'] ?? '')) ?: '-',
+                trim((string) ($_POST['desa'] ?? '')),
+                trim((string) ($_POST['kecamatan'] ?? '')),
+                trim((string) ($_POST['kabupaten'] ?? '')),
+                trim((string) ($_POST['provinsi'] ?? '')),
+                trim((string) ($_POST['telepon'] ?? '')),
+                trim((string) ($_POST['email'] ?? '')),
+                trim((string) ($_POST['website'] ?? '')),
                 trim((string) ($_POST['kepala_sekolah'] ?? '')) ?: '-',
                 trim((string) ($_POST['nip_kepala_sekolah'] ?? '')) ?: '-',
                 trim((string) ($_POST['tahun_ajaran'] ?? '')) ?: date('Y') . '/' . (date('Y') + 1),
@@ -126,10 +135,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $jenisUbah = array_key_exists('jenis_sekolah', $_POST)
                     ? ($_POST['jenis_sekolah'] === 'madrasah' ? 'madrasah' : 'umum')
                     : (string) ($s['jenis'] ?? 'umum');
-                q('UPDATE sekolah SET nama=?, npsn=?, alamat=?, kepala_sekolah=?, nip_kepala_sekolah=?, tahun_ajaran=?, semester=?, batas_a=?, batas_b=?, batas_c=?, catatan=?, jenis=? WHERE id=?', [
+                q('UPDATE sekolah SET nama=?, npsn=?, nsm=?, alamat=?, desa=?, kecamatan=?, kabupaten=?, provinsi=?, telepon=?, email=?, website=?, kepala_sekolah=?, nip_kepala_sekolah=?, tahun_ajaran=?, semester=?, batas_a=?, batas_b=?, batas_c=?, catatan=?, jenis=? WHERE id=?', [
                     $nama,
                     trim((string) ($_POST['npsn'] ?? '')) ?: '-',
+                    trim((string) ($_POST['nsm'] ?? '')),
                     trim((string) ($_POST['alamat'] ?? '')) ?: '-',
+                    trim((string) ($_POST['desa'] ?? '')),
+                    trim((string) ($_POST['kecamatan'] ?? '')),
+                    trim((string) ($_POST['kabupaten'] ?? '')),
+                    trim((string) ($_POST['provinsi'] ?? '')),
+                    trim((string) ($_POST['telepon'] ?? '')),
+                    trim((string) ($_POST['email'] ?? '')),
+                    trim((string) ($_POST['website'] ?? '')),
                     trim((string) ($_POST['kepala_sekolah'] ?? '')) ?: '-',
                     trim((string) ($_POST['nip_kepala_sekolah'] ?? '')) ?: '-',
                     trim((string) ($_POST['tahun_ajaran'] ?? '')),
@@ -171,6 +188,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : 'Sekolah "' . $s['nama'] . '" dinonaktifkan. Akses masuk seluruh akunnya (' . $d['akun'] . ' akun, ' . $d['guru'] . ' data guru) dihentikan, '
               . 'tetapi datanya TIDAK dihapus — bisa diaktifkan kembali kapan saja.',
             $baru === 1 ? 'ok' : 'warn');
+        redirect('sekolah.php');
+    }
+
+    // ---- aktivasi sekolah (permintaan pemilik) ----
+    // Hanya Super Admin (halaman ini memang khusus Super Admin). Bisa memakai KODE AKTIVASI
+    // lembaga (sesuai permintaan "buatkan kode aktifasi untuk sekolah yang mendaftar") atau
+    // tombol langsung, supaya Admin tidak terhambat bila kode sedang tidak di tangan.
+    if ($aksi === 'aktifkan' || $aksi === 'batasi') {
+        if ($aksi === 'batasi') {
+            aktivasi_batasi($id);
+            flash('Sekolah "' . $s['nama'] . '" dikembalikan ke mode TERBATAS (maksimal '
+                . (int) AKTIVASI_MAKS_GURU . ' data guru, ' . (int) AKTIVASI_MAKS_SUPERVISI_MENU
+                . ' supervisi tiap menu, ' . (int) AKTIVASI_MAKS_JADWAL . ' baris jadwal, '
+                . (int) AKTIVASI_MAKS_DOKUMEN . ' dokumen ke pengawas).', 'warn');
+            redirect('sekolah.php');
+        }
+        $masukan = trim((string) ($_POST['kode'] ?? ''));
+        $pakaiKode = $masukan !== '';
+        if ($pakaiKode && !kode_aktivasi_cocok($s, $masukan)) {
+            flash('Kode aktivasi tidak cocok dengan sekolah "' . $s['nama'] . '". Kode setiap lembaga berbeda dan berubah setiap periode — salin kode yang tampil pada kartu sekolah ini.', 'err');
+            redirect('sekolah.php');
+        }
+        aktivasi_aktifkan($id);
+        flash('Sekolah "' . $s['nama'] . '" AKTIF dengan masa aktif ' . (int) aktivasi_hari() . ' hari (1 tahun) sampai '
+            . waktu_id_polos(aktivasi_sampai($id)) . ' — seluruh fitur terbuka (data guru, supervisi tiap menu, jadwal, impor, dan akun massal).'
+            . ($pakaiKode ? ' Diaktifkan memakai kode aktivasi lembaga.' : '')
+            . ' Kode periode berikutnya berbeda dan tampil pada kartu sekolah ini.');
         redirect('sekolah.php');
     }
 
@@ -260,6 +304,11 @@ $rows = all('SELECT s.*,
     (SELECT nama FROM users u WHERE u.sekolah_id = s.id AND u.role = "admin" ORDER BY u.id LIMIT 1) admin_nama
     FROM sekolah s WHERE s.verifikasi = "disetujui" ORDER BY s.nama');
 
+// Pintasan HAPUS dari halaman lain (mis. tombol Hapus pada tabel Peringkat Sekolah di dasbor
+// Super Admin): `?hapus=<id>` membuka langsung Zona Berbahaya kartu sekolah itu. Penghapusan tetap
+// WAJIB melewati konfirmasi "ketik HAPUS" — pintasan ini hanya membukakan formulirnya.
+$bukaHapus = (int) ($_GET['hapus'] ?? 0);
+
 $aktifList = [];
 $nonaktifList = [];
 foreach ($rows as $r) {
@@ -340,7 +389,7 @@ page_top('Kelola Sekolah', 'sekolah');
         $diKelola = $aktifCtx === (int) $s['id'];
         $dampak = sekolah_dampak((int) $s['id']);
         ?>
-      <div class="butir" style="margin:0;<?= (int) $s['aktif'] === 0 ? 'opacity:.7' : '' ?>;<?= $diKelola ? 'border-color:var(--accent);background:linear-gradient(135deg,rgba(79,70,229,.06),rgba(139,92,246,.06))' : '' ?>">
+      <div class="butir" style="margin:0;<?= (int) $s['aktif'] === 0 ? 'opacity:.7' : '' ?>;<?= $diKelola ? 'border-color:var(--accent);background:linear-gradient(135deg,rgba(var(--accent-rgb),.06),rgba(var(--accent2-rgb),.06))' : '' ?>">
         <div class="butir-head" style="align-items:flex-start">
           <div class="stat-ic" style="width:40px;height:40px;border-radius:12px"><?= ikon('school', 19) ?></div>
           <div style="flex:1;min-width:0">
@@ -353,6 +402,13 @@ page_top('Kelola Sekolah', 'sekolah');
             <div class="butir-indikator">
               NPSN <?= e((string) ($s['npsn'] ?: '-')) ?> &middot; <?= e((string) ($s['alamat'] ?: '-')) ?><br>
               Kepala sekolah: <?= e((string) ($s['kepala_sekolah'] ?: '-')) ?> &middot; T.A. <?= e((string) ($s['tahun_ajaran'] ?: '-')) ?> <?= e((string) ($s['semester'] ?: '')) ?>
+              <?php if (trim((string) ($s['tanggal_daftar'] ?? '')) !== ''): ?>
+                <br>Mendaftar sendiri: <?= e(tanggal_id(substr((string) $s['tanggal_daftar'], 0, 10))) ?>
+                (disetujui otomatis<?= aktivasi_terbatas($s) ? ', mode terbatas — perlu kode aktivasi' : '' ?>)
+                <?php if (aktivasi_status($s)['sampai_ts'] > 0): ?>
+                  <br><span class="xs mut">Masa aktif sampai <?= e(waktu_id_polos(aktivasi_status($s)['sampai'])) ?></span>
+                <?php endif; ?>
+              <?php endif; ?>
             </div>
           </div>
           <div class="flex" style="gap:6px">
@@ -375,6 +431,85 @@ page_top('Kelola Sekolah', 'sekolah');
           <div class="nilai-chip" style="min-width:0"><b><?= (int) $s['supervisi'] ?><?php if ((int) $s['draft'] > 0): ?><span class="xs mut" style="font-weight:400">+<?= (int) $s['draft'] ?> draf</span><?php endif; ?></b><span>Supervisi final</span></div>
           <div class="nilai-chip" style="min-width:0"><b><?= $rata > 0 ? r1($rata) : '-' ?></b><span>Rata-rata nilai</span></div>
           <div class="nilai-chip" style="min-width:0"><b><?= $cakupan ?>%</b><span>Cakupan guru</span></div>
+        </div>
+
+        <?php
+        // AKTIVASI (permintaan pemilik): status + MASA AKTIF 1 TAHUN + KODE AKTIVASI lembaga
+        // periode berjalan + tombol aktifkan/batasi.
+        $aktStatus = aktivasi_status($s);
+        $aktTerbatas = aktivasi_terbatas($s);
+        $aktKode = kode_aktivasi_sekolah($s);
+        ?>
+        <div class="mt16" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span class="pill <?= ($aktStatus['habis'] || $aktStatus['uji_habis']) ? 'pill-err' : ($aktTerbatas ? 'pill-warn' : 'pill-ok') ?>">
+            <?= ikon($aktTerbatas ? 'lock' : 'shield', 13) ?>
+            <?= $aktStatus['habis']
+                ? 'Masa aktif habis — mode terbatas'
+                : ($aktStatus['uji_habis']
+                    ? 'Masa uji coba habis — terkunci (belum diaktivasi)'
+                    : ($aktTerbatas ? 'Belum diaktivasi — mode terbatas' : 'Aktif — semua fitur terbuka')) ?>
+          </span>
+          <?php if ($aktStatus['sampai_ts'] > 0): ?>
+            <span class="xs mut"><?= $aktStatus['habis'] ? 'Masa aktif berakhir' : 'Masa aktif sampai' ?>
+              <b><?= e(waktu_id_polos($aktStatus['sampai'])) ?></b><?= $aktStatus['aktif']
+                ? ' (sisa ' . (int) $aktStatus['sisa_hari'] . ' hari)' : '' ?></span>
+          <?php endif; ?>
+          <?php if ($aktTerbatas): ?>
+            <span class="xs mut">Batas: <?= (int) AKTIVASI_MAKS_GURU ?> guru &middot;
+              <?= (int) AKTIVASI_MAKS_SUPERVISI_MENU ?> supervisi tiap menu &middot;
+              <?= (int) AKTIVASI_MAKS_JADWAL ?> jadwal &middot;
+              <?= (int) AKTIVASI_MAKS_DOKUMEN ?> dokumen ke pengawas &middot;
+              Susun Laporan terkunci</span>
+          <?php endif; ?>
+          <?php // MASA UJI COBA 30 HARI (permintaan pemilik): sekolah yang belum diaktivasi hanya
+                // diberi waktu terbatas sejak terdaftar (kini 15 hari). ?>
+          <?php if ($aktStatus['uji'] && $aktStatus['uji_sampai_ts'] > 0): ?>
+            <span class="xs mut">Masa uji coba <?= (int) aktivasi_hari_uji() ?> hari<?= $aktStatus['uji_habis']
+              ? ' <b>sudah habis</b> (' . e(waktu_id_polos($aktStatus['uji_sampai'])) . ') — aplikasi terkunci'
+              : ' berakhir <b>' . e(waktu_id_polos($aktStatus['uji_sampai'])) . '</b> (sisa '
+                . (int) $aktStatus['uji_sisa_hari'] . ' hari)' ?></span>
+          <?php endif; ?>
+        </div>
+
+        <?php
+        // KIRIM WHATSAPP KE LEMBAGA (permintaan pemilik): nomor HP/telepon yang diisi lembaga pada
+        // menu Profil & Pengaturan dapat langsung dikirimi WA oleh Super Admin, dengan isi pesan
+        // aktivasi otomatis (nama kepala sekolah, nama lembaga, status masa aktif/masa uji coba).
+        $waNomor = wa_lembaga_nomor_teks($s);
+        ?>
+        <div class="flex mt16" style="gap:8px;flex-wrap:wrap;align-items:center">
+          <?= wa_lembaga_tombol($s, 'btn btn-ok btn-sm', 'Kirim WA ke Kepala Sekolah') ?>
+          <span class="xs mut">Nomor HP/telepon lembaga:
+            <b><?= e($waNomor !== '' ? $waNomor : '-') ?></b> &middot; diisi lembaga pada menu
+            <b>Profil &amp; Pengaturan</b> atau kolom <b>Telepon</b> di bagian Ubah profil di bawah.</span>
+        </div>
+
+        <div class="kode-aktivasi mt16">
+          <label class="f" for="kode<?= (int) $s['id'] ?>">Kode aktivasi lembaga</label>
+          <div class="kode-baris">
+            <input type="text" id="kode<?= (int) $s['id'] ?>" class="kode-kotak" value="<?= e($aktKode) ?>" readonly>
+            <button class="btn btn-ghost btn-sm" type="button" data-salin="#kode<?= (int) $s['id'] ?>"><?= ikon('doc', 14) ?> Salin</button>
+            <?php if ($aktTerbatas): ?>
+              <form method="post" style="display:inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="aksi" value="aktifkan">
+                <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
+                <input type="hidden" name="kode" value="<?= e($aktKode) ?>">
+                <button class="btn btn-primary btn-sm" type="submit" data-confirm="Aktifkan sekolah <?= e((string) $s['nama']) ?> memakai kode aktivasi periode ke-<?= (int) $aktStatus['periode'] ?>? Seluruh pembatasan fitur akan hilang selama <?= (int) aktivasi_hari() ?> hari (1 tahun)."><?= ikon('key', 14) ?> <?= $aktStatus['habis'] ? 'Aktifkan periode baru' : 'Aktifkan sekarang' ?></button>
+              </form>
+            <?php else: ?>
+              <form method="post" style="display:inline" data-confirm="Kembalikan <?= e((string) $s['nama']) ?> ke mode TERBATAS? Fitur akan dibatasi lagi (maksimal <?= (int) AKTIVASI_MAKS_GURU ?> data guru, <?= (int) AKTIVASI_MAKS_SUPERVISI_MENU ?> supervisi tiap menu, <?= (int) AKTIVASI_MAKS_JADWAL ?> jadwal, <?= (int) AKTIVASI_MAKS_DOKUMEN ?> dokumen ke pengawas; menu Susun Laporan terkunci) dan masa uji coba <?= (int) aktivasi_hari_uji() ?> hari dijalankan kembali sejak sekarang.">
+                <?= csrf_field() ?>
+                <input type="hidden" name="aksi" value="batasi">
+                <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
+                <button class="btn btn-ghost btn-sm" type="submit"><?= ikon('lock', 14) ?> Batasi lagi</button>
+              </form>
+            <?php endif; ?>
+          </div>
+          <p class="xs mut" style="margin:8px 0 0">Kode ini unik untuk sekolah/madrasah ini (berbeda untuk setiap lembaga)
+            <b>dan berbeda setiap periode</b> — kode di atas berlaku untuk periode ke-<?= (int) $aktStatus['periode'] ?>
+            (masa aktif <?= (int) aktivasi_hari() ?> hari / 1 tahun). Berikan kepada pengelola sekolah bila diminta;
+            setelah masa aktif habis, salin kode baru dari kartu ini.</p>
         </div>
 
         <?php if ($diKelola): ?>
@@ -421,12 +556,28 @@ page_top('Kelola Sekolah', 'sekolah');
               </div>
               <div class="grid g2" style="gap:10px">
                 <div><label class="f">NPSN</label><input type="text" name="npsn" value="<?= e((string) $s['npsn']) ?>"></div>
+                <div><label class="f">NSM <span class="xs mut">(madrasah)</span></label><input type="text" name="nsm" value="<?= e((string) ($s['nsm'] ?? '')) ?>"></div>
+              </div>
+              <div><label class="f">Alamat (Jalan, Dusun)</label><input type="text" name="alamat" value="<?= e((string) $s['alamat']) ?>"></div>
+              <div class="grid g2" style="gap:10px">
+                <div><label class="f">Desa/Kelurahan</label><input type="text" name="desa" value="<?= e((string) ($s['desa'] ?? '')) ?>"></div>
+                <div><label class="f">Kecamatan</label><input type="text" name="kecamatan" value="<?= e((string) ($s['kecamatan'] ?? '')) ?>"></div>
+              </div>
+              <div class="grid g2" style="gap:10px">
+                <div><label class="f">Kabupaten</label><input type="text" name="kabupaten" value="<?= e((string) ($s['kabupaten'] ?? '')) ?>"></div>
+                <div><label class="f">Provinsi</label><input type="text" name="provinsi" value="<?= e((string) ($s['provinsi'] ?? '')) ?>"></div>
+              </div>
+              <div class="grid g2" style="gap:10px">
+                <div><label class="f">Telepon / HP (WhatsApp)</label><input type="text" name="telepon" value="<?= e((string) ($s['telepon'] ?? '')) ?>" placeholder="08xxxxxxxxxx"><div class="hint">Isilah nomor HP yang aktif di WhatsApp agar mudah di hubungi oleh admin Supervisi.</div></div>
+                <div><label class="f">Email</label><input type="text" name="email" value="<?= e((string) ($s['email'] ?? '')) ?>"></div>
+              </div>
+              <div class="grid g2" style="gap:10px">
+                <div><label class="f">Situs/Web</label><input type="text" name="website" value="<?= e((string) ($s['website'] ?? '')) ?>"></div>
                 <div><label class="f">Tahun Ajaran</label><input type="text" name="tahun_ajaran" value="<?= e((string) $s['tahun_ajaran']) ?>"></div>
               </div>
-              <div><label class="f">Alamat</label><input type="text" name="alamat" value="<?= e((string) $s['alamat']) ?>"></div>
               <div class="grid g2" style="gap:10px">
-                <div><label class="f">Kepala Sekolah</label><input type="text" name="kepala_sekolah" value="<?= e((string) $s['kepala_sekolah']) ?>"></div>
-                <div><label class="f">NIP Kepala Sekolah</label><input type="text" name="nip_kepala_sekolah" value="<?= e((string) $s['nip_kepala_sekolah']) ?>"></div>
+                <div><label class="f">Nama Kepala Sekolah / Supervisor</label><input type="text" name="kepala_sekolah" value="<?= e((string) $s['kepala_sekolah']) ?>"></div>
+                <div><label class="f">NIP</label><input type="text" name="nip_kepala_sekolah" value="<?= e((string) $s['nip_kepala_sekolah']) ?>"></div>
               </div>
               <div class="grid g2" style="gap:10px">
                 <div>
@@ -492,7 +643,7 @@ page_top('Kelola Sekolah', 'sekolah');
         </details>
 
         <!-- Zona berbahaya: nonaktifkan / hapus permanen -->
-        <details class="editbox" id="hapus-<?= (int) $s['id'] ?>">
+        <details class="editbox" id="hapus-<?= (int) $s['id'] ?>"<?= $bukaHapus === (int) $s['id'] ? ' open' : '' ?>>
           <summary style="color:var(--err)"><?= ikon('trash', 14) ?> Zona berbahaya: nonaktifkan atau hapus sekolah ini</summary>
           <div class="grid g2 mt16" style="gap:16px;align-items:start">
             <div class="butir" style="margin:0;border-color:rgba(217,119,6,.35)">
@@ -523,7 +674,7 @@ page_top('Kelola Sekolah', 'sekolah');
                     <br>&bull; <?= (int) $dampak['guru'] ?> data guru (<?= (int) $dampak['guru_aktif'] ?> aktif)
                     <br>&bull; <?= (int) $dampak['akun'] ?> akun pengguna (admin sekolah &amp; guru)<?= (int) $dampak['foto'] > 0 ? ', termasuk ' . (int) $dampak['foto'] . ' foto profil' : '' ?>
                     <br>&bull; <?= (int) $dampak['supervisi'] ?> supervisi (<?= (int) $dampak['supervisi_final'] ?> sudah final) dan <?= (int) $dampak['penilaian'] ?> baris penilaian
-                    <br>&bull; <?= (int) $dampak['butir'] ?> butir penilaian beserta menunya
+                    <br>&bull; menu &amp; butir penilaian bersifat GLOBAL &mdash; <b>tidak</b> ikut terhapus
                     <?php if ((int) $dampak['pengawas'] > 0): ?><br>&bull; <?= (int) $dampak['pengawas'] ?> penugasan pengawas pada sekolah ini<?php endif; ?>
                     <?php if ($dampak['terakhir']): ?><br>Supervisi terakhir: <?= e(tanggal_id((string) $dampak['terakhir'])) ?><?php endif; ?>
                   </div>
@@ -589,6 +740,8 @@ page_top('Kelola Sekolah', 'sekolah');
             <?= csrf_field() ?><input type="hidden" name="aksi" value="aktif"><input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
             <button class="btn btn-primary btn-sm" type="submit"><?= ikon('check', 14) ?> Aktifkan kembali</button>
           </form>
+          <?php // Kirim WA ke sekolah nonaktif (nomor HP/telepon dari menu Profil & Pengaturan). ?>
+          <?= wa_lembaga_tombol($s, 'btn btn-ok btn-sm', 'Kirim WA', '') ?>
           <a class="btn btn-ghost btn-sm" href="#hapus-<?= (int) $s['id'] ?>-nonaktif"><?= ikon('trash', 14) ?> Hapus permanen</a>
         </div>
 
@@ -599,8 +752,8 @@ page_top('Kelola Sekolah', 'sekolah');
             <input type="hidden" name="aksi" value="hapus"><input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
             <div class="sm mut">
               Yang akan terhapus: <b><?= (int) $dampak['guru'] ?></b> data guru, <b><?= (int) $dampak['akun'] ?></b> akun,
-              <b><?= (int) $dampak['supervisi'] ?></b> supervisi, <b><?= (int) $dampak['penilaian'] ?></b> baris penilaian,
-              dan <b><?= (int) $dampak['butir'] ?></b> butir penilaian<?= (int) $dampak['pengawas'] > 0 ? ' serta ' . (int) $dampak['pengawas'] . ' penugasan pengawas' : '' ?>.
+              <b><?= (int) $dampak['supervisi'] ?></b> supervisi dan <b><?= (int) $dampak['penilaian'] ?></b> baris penilaian<?= (int) $dampak['pengawas'] > 0 ? ', serta ' . (int) $dampak['pengawas'] . ' penugasan pengawas' : '' ?>.
+              Menu &amp; butir penilaian <b>global</b> tidak ikut terhapus.
             </div>
             <div class="grid g2" style="gap:10px">
               <div>
@@ -628,10 +781,18 @@ page_top('Kelola Sekolah', 'sekolah');
     <input type="hidden" name="aksi" value="tambah">
     <div><label class="f" for="nama">Nama Sekolah *</label><input type="text" id="nama" name="nama" required placeholder="mis. MA. Sirojuth Tholibiin Mootilango"></div>
     <div><label class="f" for="npsn">NPSN</label><input type="text" id="npsn" name="npsn" placeholder="8 digit"></div>
+    <div><label class="f" for="nsm">NSM <span class="xs mut">(madrasah)</span></label><input type="text" id="nsm" name="nsm" placeholder="12 digit"></div>
+    <div><label class="f" for="alamat">Alamat (Jalan, Dusun)</label><input type="text" id="alamat" name="alamat" placeholder="Jl. ..., Dusun ..."></div>
+    <div><label class="f" for="desa">Desa/Kelurahan</label><input type="text" id="desa" name="desa"></div>
+    <div><label class="f" for="kecamatan">Kecamatan</label><input type="text" id="kecamatan" name="kecamatan"></div>
+    <div><label class="f" for="kabupaten">Kabupaten</label><input type="text" id="kabupaten" name="kabupaten"></div>
+    <div><label class="f" for="provinsi">Provinsi</label><input type="text" id="provinsi" name="provinsi"></div>
+    <div><label class="f" for="telepon">Telepon / HP (WhatsApp)</label><input type="text" id="telepon" name="telepon" placeholder="08xxxxxxxxxx"><div class="hint">Isilah nomor HP yang aktif di WhatsApp agar mudah di hubungi oleh admin Supervisi.</div></div>
+    <div><label class="f" for="email">Email</label><input type="text" id="email" name="email"></div>
+    <div><label class="f" for="website">Situs/Web</label><input type="text" id="website" name="website" placeholder="www.contoh.sch.id"></div>
     <div><label class="f" for="tahun_ajaran">Tahun Ajaran</label><input type="text" id="tahun_ajaran" name="tahun_ajaran" value="<?= e(date('Y') . '/' . (date('Y') + 1)) ?>"></div>
-    <div><label class="f" for="alamat">Alamat</label><input type="text" id="alamat" name="alamat" placeholder="Jl. ..."></div>
-    <div><label class="f" for="kepala_sekolah">Kepala Sekolah</label><input type="text" id="kepala_sekolah" name="kepala_sekolah" placeholder="Nama &amp; gelar"></div>
-    <div><label class="f" for="nip_kepala_sekolah">NIP Kepala Sekolah</label><input type="text" id="nip_kepala_sekolah" name="nip_kepala_sekolah"></div>
+    <div><label class="f" for="kepala_sekolah">Kepala Sekolah / Supervisor</label><input type="text" id="kepala_sekolah" name="kepala_sekolah" placeholder="Nama &amp; gelar"></div>
+    <div><label class="f" for="nip_kepala_sekolah">NIP</label><input type="text" id="nip_kepala_sekolah" name="nip_kepala_sekolah"></div>
     <div><label class="f" for="semester">Semester</label>
       <select id="semester" name="semester"><option value="Ganjil">Ganjil</option><option value="Genap">Genap</option></select>
     </div>

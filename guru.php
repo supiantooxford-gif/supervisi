@@ -5,6 +5,14 @@ require_once __DIR__ . '/inc/init.php';
 $u = require_admin();
 $sid = sekolah_id();
 
+// AKTIVASI (permintaan pemilik): pada mode terbatas hanya boleh ada 1 data guru dan impor ditutup,
+// jadi tombolnya diarahkan ke halaman Status & Aktivasi (popup "Aplikasi Belum Diaktifasi").
+// Penjagaan sebenarnya tetap di server: guru_edit.php & guru_import.php.
+$batasGuru = batas_guru_tercapai();
+$batasImpor = aktivasi_terbatas();
+$tautanGuruBaru = $batasGuru ? 'aktivasi.php?batas=guru&amp;kembali=guru.php' : 'guru_edit.php';
+$tautanImpor = $batasImpor ? 'aktivasi.php?batas=impor&amp;kembali=guru.php' : 'guru_import.php';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_guard();
     $aksi = (string) ($_POST['aksi'] ?? '');
@@ -96,8 +104,8 @@ page_top('Data Guru', 'guru');
   <div class="card-head">
     <div><h2>Daftar Guru</h2><p><span id="tblCount"><?= count($rows) ?></span> data ditemukan</p></div>
     <div class="flex">
-      <a class="btn btn-primary" href="guru_edit.php"><?= ikon('plus', 16) ?> Tambah Guru</a>
-      <a class="btn btn-ghost" href="guru_import.php"><?= ikon('upload', 16) ?> Impor Excel/CSV</a>
+      <a class="btn btn-primary" href="<?= $tautanGuruBaru ?>"><?= ikon('plus', 16) ?> Tambah Guru</a>
+      <a class="btn btn-ghost" href="<?= $tautanImpor ?>"><?= ikon('upload', 16) ?> Impor Excel/CSV</a>
       <a class="btn btn-ghost" href="cetak_guru.php" title="Cetak daftar guru beserta NIP/NIK dan akun loginnya"><?= ikon('print', 16) ?> Cetak Data Guru</a>
     </div>
   </div>
@@ -135,8 +143,8 @@ page_top('Data Guru', 'guru');
       <h3>Belum ada data guru</h3>
       <p>Tambahkan satu per satu atau impor sekaligus dari file Excel/CSV.</p>
       <div class="flex" style="justify-content:center">
-        <a class="btn btn-primary" href="guru_edit.php"><?= ikon('plus', 16) ?> Tambah Guru</a>
-        <a class="btn btn-ghost" href="guru_import.php"><?= ikon('upload', 16) ?> Impor Excel/CSV</a>
+        <a class="btn btn-primary" href="<?= $tautanGuruBaru ?>"><?= ikon('plus', 16) ?> Tambah Guru</a>
+        <a class="btn btn-ghost" href="<?= $tautanImpor ?>"><?= ikon('upload', 16) ?> Impor Excel/CSV</a>
         <a class="btn btn-ghost" href="cetak_guru.php"><?= ikon('print', 16) ?> Cetak Data Guru</a>
       </div>
     </div>

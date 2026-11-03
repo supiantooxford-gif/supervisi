@@ -57,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nama = trim((string) ($_POST['nama'] ?? ''));
         $username = trim((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
+        $nip = nip_bersih($_POST['nip'] ?? '');
         $binaan = is_array($_POST['sekolah'] ?? null) ? $_POST['sekolah'] : [];
         $err = [];
         if ($nama === '') {
@@ -75,8 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         db()->exec('BEGIN IMMEDIATE');
         try {
-            q('INSERT INTO users (username, password_hash, nama, role, sekolah_id, guru_id, aktif, dibuat) VALUES (?,?,?,?,NULL,NULL,1,?)',
-                [$username, password_hash($password, PASSWORD_DEFAULT), $nama, 'pengawas', date('Y-m-d H:i:s')]);
+            q('INSERT INTO users (username, password_hash, nama, role, sekolah_id, guru_id, aktif, nip, asal, dibuat) VALUES (?,?,?,?,NULL,NULL,1,?,?,?)',
+                [$username, password_hash($password, PASSWORD_DEFAULT), $nama, 'pengawas',
+                 $nip, 'manual', date('Y-m-d H:i:s')]);
             $baru = (int) db()->lastInsertId();
             db()->exec('COMMIT');
         } catch (Throwable $ex) {
@@ -110,11 +112,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('Kata sandi baru minimal 6 karakter.', 'err');
             redirect('pengawas.php');
         }
+        // NIP hanya diperbarui bila medannya benar-benar dikirim (form lama tetap aman).
+        $nipKirim = array_key_exists('nip', $_POST);
+        $nip = $nipKirim ? nip_bersih($_POST['nip'] ?? '') : '';
         if ($password !== '') {
             q('UPDATE users SET nama = ?, username = ?, password_hash = ? WHERE id = ?',
                 [$nama, $username, password_hash($password, PASSWORD_DEFAULT), $id]);
         } else {
             q('UPDATE users SET nama = ?, username = ? WHERE id = ?', [$nama, $username, $id]);
+        }
+        if ($nipKirim) {
+            q('UPDATE users SET nip = ? WHERE id = ?', [$nip !== '' ? $nip : null, $id]);
         }
         flash('Akun pengawas "' . $nama . '" diperbarui' . ($password !== '' ? ' beserta kata sandinya' : '') . '.');
         redirect('pengawas.php');
@@ -189,6 +197,7 @@ page_top('Akun Pengawas Sekolah', 'pengawas');
       <div class="stat-lbl">Akun aktif</div>
     </div>
   </div>
+  <?php $jmlDitinjau = pengawas_menunggu_jumlah(); ?>
   <div class="card stat">
     <div class="stat-ic o"><?= ikon('star', 20) ?></div>
     <div>
@@ -204,10 +213,24 @@ page_top('Akun Pengawas Sekolah', 'pengawas');
     dan mengunduhnya (CSV/cetak). Ia tidak dapat menilai, mengubah data guru, atau membuka menu pengaturan.</span>
 </div>
 
+<?php if ($jmlDitinjau > 0): ?>
+  <div class="alert alert-warn">
+    <?= ikon('star', 16) ?>
+    <span><b><?= $jmlDitinjau ?> akun pengawas</b> diajukan lewat halaman pendaftaran sekolah dan belum ditinjau.
+      Akun itu <b>berstatus nonaktif</b> sehingga belum bisa dipakai masuk. Periksa identitas &amp; sekolah
+      binaannya, tetapkan <b>kata sandi barunya</b>, lalu tekan <b>Aktifkan</b> bila memang benar.</span>
+  </div>
+<?php endif; ?>
+
 <div class="card">
   <div class="card-head">
     <div><h2>Daftar Akun Pengawas</h2><p>Buka panel pada tiap akun untuk mengubah identitas, sandi, dan sekolah binaannya.</p></div>
-    <span class="chip"><?= count($rows) ?> akun</span>
+    <div class="flex">
+      <?php if ($jmlDitinjau > 0): ?>
+        <span class="chip pill-warn" id="chipDitinjau"><?= (int) $jmlDitinjau ?> menunggu ditinjau</span>
+      <?php endif; ?>
+      <span class="chip"><?= count($rows) ?> akun</span>
+    </div>
   </div>
 
   <?php if (!$rows): ?>
@@ -226,11 +249,19 @@ page_top('Akun Pengawas Sekolah', 'pengawas');
               <div class="butir-komponen">
                 <?= e((string) $p['nama']) ?>
                 <?php if ((int) $p['aktif'] === 0): ?><span class="pill pill-gray" style="margin-left:6px;vertical-align:middle">nonaktif</span><?php endif; ?>
+                <?php if ((int) $p['aktif'] === 0 && (string) ($p['asal'] ?? '') === 'pendaftaran'): ?>
+                  <span class="pill pill-warn" style="margin-left:6px;vertical-align:middle">menunggu ditinjau</span>
+                <?php endif; ?>
                 <?php if (empty($binaan)): ?><span class="pill pill-warn" style="margin-left:6px;vertical-align:middle">belum ada binaan</span><?php endif; ?>
               </div>
               <div class="butir-indikator">
-                Nama pengguna: <b><?= e((string) $p['username']) ?></b> &middot;
+                Nama pengguna: <b><?= e((string) $p['username']) ?></b><?php if (trim((string) ($p['nip'] ?? '')) !== ''): ?>
+                  &middot; NIP: <b><?= e((string) $p['nip']) ?></b><?php endif; ?> &middot;
                 terakhir masuk: <?= e((string) ($p['login_terakhir'] ?: 'belum pernah')) ?>
+                <?php if ((string) ($p['asal'] ?? '') === 'pendaftaran'): ?>
+                  <br><span class="pill pill-gray">dari pendaftaran sekolah</span>
+                  <?php if ((int) $p['aktif'] === 0): ?> diajukan oleh sekolah yang mendaftar — tinjau dulu sebelum diaktifkan.<?php endif; ?>
+                <?php endif; ?>
                 <?php if ($rb && $rb['sekolah'] > 0): ?>
                   <br><?= (int) $rb['sekolah'] ?> sekolah binaan &middot; <?= (int) $rb['guru'] ?> guru &middot;
                   <?= (int) $rb['supervisi'] ?> supervisi final &middot; rata-rata <?= r1($rb['rata']) ?>
@@ -269,6 +300,7 @@ page_top('Akun Pengawas Sekolah', 'pengawas');
                 <input type="hidden" name="aksi" value="ubah"><input type="hidden" name="id" value="<?= (int) $p['id'] ?>">
                 <h3 class="mb0">Identitas &amp; sandi</h3>
                 <div><label class="f">Nama Pengawas</label><input type="text" name="nama" value="<?= e((string) $p['nama']) ?>" required></div>
+                <div><label class="f">NIP</label><input type="text" name="nip" value="<?= e((string) ($p['nip'] ?? '')) ?>"></div>
                 <div><label class="f">Nama Pengguna</label><input type="text" name="username" value="<?= e((string) $p['username']) ?>" required></div>
                 <div>
                   <label class="f">Kata Sandi Baru</label>
@@ -315,6 +347,7 @@ page_top('Akun Pengawas Sekolah', 'pengawas');
     <div class="grid" style="gap:12px">
       <?php $prefill = count($rows) === 0; // akun pertama: isikan nilai yang wajar agar cepat dibuat ?>
       <div><label class="f" for="nama">Nama Pengawas *</label><input type="text" id="nama" name="nama" required value="<?= $prefill ? 'Pengawas Sekolah' : '' ?>" placeholder="nama &amp; gelar"></div>
+      <div><label class="f" for="nip">NIP</label><input type="text" id="nip" name="nip" placeholder="boleh dikosongkan"></div>
       <div class="grid g2" style="gap:12px">
         <div><label class="f" for="username">Nama Pengguna *</label><input type="text" id="username" name="username" required value="<?= $prefill ? 'pengawas' : '' ?>" placeholder="tanpa spasi"></div>
         <div><label class="f" for="password">Kata Sandi *</label><input type="text" id="password" name="password" required value="<?= $prefill ? 'pengawas123' : '' ?>" placeholder="minimal 6 karakter"></div>

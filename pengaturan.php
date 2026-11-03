@@ -27,7 +27,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($aksi === 'simpan') {
-        $teks = ['nama_sekolah', 'npsn', 'alamat_sekolah', 'kepala_sekolah', 'nip_kepala_sekolah', 'tahun_ajaran', 'semester'];
+        // IDENTITAS LEMBAGA lengkap (permintaan pemilik): Nama, NPSN, NSM, Alamat (Jalan, Dusun),
+        // Desa/Kelurahan, Kecamatan, Kabupaten, Provinsi, Telepon, Email, Situs/Web, Semester,
+        // Nama Kepala Madrasah/Supervisor, dan NIP.
+        $teks = [
+            'nama_sekolah', 'npsn', 'nsm', 'alamat_sekolah', 'desa', 'kecamatan', 'kabupaten',
+            'provinsi', 'telepon_sekolah', 'email_sekolah', 'website', 'kepala_sekolah',
+            'nip_kepala_sekolah', 'tahun_ajaran', 'semester',
+        ];
         foreach ($teks as $k) {
             set_setting($k, trim((string) ($_POST[$k] ?? '')));
         }
@@ -263,13 +270,55 @@ page_top('Profil & Pengaturan Sekolah', 'pengaturan');
           <input type="text" id="npsn" name="npsn" value="<?= e(setting('npsn')) ?>">
         </div>
         <div>
-          <label class="f" for="tahun_ajaran">Tahun Ajaran</label>
-          <input type="text" id="tahun_ajaran" name="tahun_ajaran" value="<?= e(setting('tahun_ajaran')) ?>" placeholder="2024/2025">
+          <label class="f" for="nsm">NSM <span class="xs mut">(Nomor Statistik Madrasah)</span></label>
+          <input type="text" id="nsm" name="nsm" value="<?= e(setting('nsm')) ?>">
         </div>
       </div>
       <div>
-        <label class="f" for="alamat_sekolah">Alamat Sekolah</label>
+        <label class="f" for="alamat_sekolah">Alamat (Jalan, Dusun)</label>
         <input type="text" id="alamat_sekolah" name="alamat_sekolah" value="<?= e(setting('alamat_sekolah')) ?>">
+      </div>
+      <div class="grid g2">
+        <div>
+          <label class="f" for="desa">Desa/Kelurahan</label>
+          <input type="text" id="desa" name="desa" value="<?= e(setting('desa')) ?>">
+        </div>
+        <div>
+          <label class="f" for="kecamatan">Kecamatan</label>
+          <input type="text" id="kecamatan" name="kecamatan" value="<?= e(setting('kecamatan')) ?>">
+          <div class="hint">Dipakai sebagai nama TEMPAT pada baris &ldquo;tempat, tanggal&rdquo; di atas tanda tangan lembar cetak.</div>
+        </div>
+      </div>
+      <div class="grid g2">
+        <div>
+          <label class="f" for="kabupaten">Kabupaten</label>
+          <input type="text" id="kabupaten" name="kabupaten" value="<?= e(setting('kabupaten')) ?>">
+        </div>
+        <div>
+          <label class="f" for="provinsi">Provinsi</label>
+          <input type="text" id="provinsi" name="provinsi" value="<?= e(setting('provinsi')) ?>">
+        </div>
+      </div>
+      <div class="grid g2">
+        <div>
+          <label class="f" for="telepon_sekolah">Telepon / HP (WhatsApp)</label>
+          <input type="text" id="telepon_sekolah" name="telepon_sekolah" value="<?= e(setting('telepon_sekolah')) ?>" placeholder="08xxxxxxxxxx">
+          <div class="hint">Isilah nomor HP yang aktif di WhatsApp agar mudah di hubungi oleh admin Supervisi.</div>
+        </div>
+        <div>
+          <label class="f" for="email_sekolah">Email</label>
+          <input type="text" id="email_sekolah" name="email_sekolah" value="<?= e(setting('email_sekolah')) ?>">
+        </div>
+      </div>
+      <div class="grid g2">
+        <div>
+          <label class="f" for="website">Situs/Web</label>
+          <input type="text" id="website" name="website" value="<?= e(setting('website')) ?>">
+        </div>
+        <div>
+          <label class="f" for="tahun_ajaran">Tahun Ajaran</label>
+          <input type="text" id="tahun_ajaran" name="tahun_ajaran" value="<?= e(setting('tahun_ajaran')) ?>" placeholder="2024/2025">
+        </div>
       </div>
       <div class="grid g2">
         <div>
@@ -286,7 +335,7 @@ page_top('Profil & Pengaturan Sekolah', 'pengaturan');
         </div>
       </div>
       <div>
-        <label class="f" for="nip_kepala_sekolah">NIP Kepala <?= e(istilah_sekolah('Sekolah')) ?></label>
+        <label class="f" for="nip_kepala_sekolah">NIP</label>
         <input type="text" id="nip_kepala_sekolah" name="nip_kepala_sekolah" value="<?= e(setting('nip_kepala_sekolah')) ?>">
       </div>
     </div>

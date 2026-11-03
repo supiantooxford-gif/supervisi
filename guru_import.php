@@ -8,6 +8,12 @@ $sid = sekolah_id();
 $ringkasan = null;
 $galat = [];
 
+// AKTIVASI: impor data guru hanya tersedia setelah sekolah diaktivasi (pilihan pemilik:
+// "impor guru & buat akun massal ditutup" pada mode terbatas).
+if (aktivasi_terbatas()) {
+    aktivasi_halang('impor', 'guru.php');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_guard();
     $raw = (string) ($_POST['payload'] ?? '');

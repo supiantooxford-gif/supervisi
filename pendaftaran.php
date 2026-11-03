@@ -1,9 +1,17 @@
 <?php
 /**
- * Pendaftaran Sekolah — halaman Super Admin untuk meninjau & menyetujui sekolah baru.
+ * Pendaftaran Sekolah — halaman Super Admin untuk meninjau sekolah pendaftar.
  *
- * Sekolah yang mendaftar lewat halaman publik (daftar.php) berstatus "menunggu" dan
- * belum bisa dipakai. Menu & butir penilaian bawaan baru dibuat saat disetujui.
+ * Permintaan pemilik (pembaruan): pendaftaran lewat halaman publik (daftar.php) kini
+ * **DISETUJUI OTOMATIS dengan mode terbatas** (`verifikasi = 'disetujui'`, `aktif = 1`,
+ * `aktivasi = 'dibatasi'`), jadi sekolah itu sudah bisa dipakai (terbatas) tanpa menunggu.
+ * Halaman ini mempertahankan:
+ *   1. daftar **Pendaftar Mandiri Terbaru** — jejak siapa yang mendaftar + status aktivasi,
+ *      dengan tombol **Tolak** (alasan) & **Tinjau ulang** supaya Super Admin tetap punya kendali;
+ *   2. daftar **Menunggu Persetujuan** — untuk data LAMA yang masih berstatus menunggu;
+ *   3. daftar **Pernah Ditolak**.
+ * Tombol "Setujui" di daftar menunggu mengembalikan sekolah lama itu ke keadaan disetujui.
+ * Menu & butir penilaian bersifat GLOBAL (tidak pernah digandakan per sekolah).
  */
 declare(strict_types=1);
 require_once __DIR__ . '/inc/init.php';
@@ -39,7 +47,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $admin = one('SELECT username, nama FROM users WHERE sekolah_id = ? AND role = "admin" ORDER BY id LIMIT 1', [$id]);
         flash('Sekolah "' . $s['nama'] . '" DISETUJUI dan siap dipakai. Admin sekolah dapat masuk dengan nama pengguna "'
-            . ($admin ? (string) $admin['username'] : '-') . '". Butir penilaian memakai daftar global yang sama.');
+            . ($admin ? (string) $admin['username'] : '-') . '". Butir penilaian memakai daftar global yang sama. '
+            . 'Catatan: sekolah ini masih berjalan MODE TERBATAS (maksimal ' . (int) AKTIVASI_MAKS_GURU . ' data guru, '
+            . (int) AKTIVASI_MAKS_SUPERVISI_MENU . ' supervisi tiap menu, ' . (int) AKTIVASI_MAKS_JADWAL
+            . ' baris jadwal) sampai kode aktivasi lembaganya dimasukkan lewat Kelola Sekolah.');
         redirect('pendaftaran.php');
     }
 
@@ -54,8 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($aksi === 'batalkan_tolak') {
-        q('UPDATE sekolah SET verifikasi = "menunggu", alasan_tolak = NULL WHERE id = ?', [$id]);
-        flash('Penolakan dibatalkan. Pendaftaran "' . $s['nama'] . '" kembali berstatus menunggu.', 'warn');
+        // Sejak pendaftaran disetujui OTOMATIS, "tinjau ulang" mengembalikan sekolah ke keadaan
+        // disetujui (bisa dipakai lagi dalam mode terbatas) — bukan ke 'menunggu', karena tidak ada
+        // lagi tahap menunggu persetujuan pada alur baru.
+        q('UPDATE sekolah SET verifikasi = "disetujui", aktif = 1, alasan_tolak = NULL WHERE id = ?', [$id]);
+        q('UPDATE users SET aktif = 1 WHERE sekolah_id = ? AND role = "admin"', [$id]);
+        flash('Penolakan dibatalkan. Sekolah "' . $s['nama'] . '" kembali DISETUJUI dan dapat dipakai lagi'
+            . (aktivasi_terbatas($s) ? ' (masih mode terbatas sampai kode aktivasi dimasukkan).' : '.'), 'warn');
         redirect('pendaftaran.php');
     }
 
@@ -101,6 +117,27 @@ $menunggu = pendaftaran_list('menunggu');
 $ditolak = pendaftaran_list('ditolak');
 $disetujui = (int) val('SELECT COUNT(*) FROM sekolah WHERE verifikasi = "disetujui"', [], 0);
 
+/**
+ * Pendaftar MANDIRI terbaru. Sejak permintaan pemilik ("buat sistem yang menyetujui otomatis tapi
+ * disetujui dengan mode terbatas"), sekolah yang mendaftar lewat daftar.php langsung berstatus
+ * `disetujui` sehingga TIDAK lagi muncul pada daftar "Menunggu Persetujuan". Daftar ini
+ * mempertahankan jejaknya di halaman Pendaftaran supaya Admin tahu siapa yang baru mendaftar dan
+ * masih menunggu AKTIVASI (kodenya ada di Kelola Sekolah).
+ */
+$otomatis = all('SELECT s.*,
+    (SELECT u.username FROM users u WHERE u.sekolah_id = s.id AND u.role = "admin" ORDER BY u.id LIMIT 1) AS admin_username,
+    (SELECT COUNT(*) FROM guru g WHERE g.sekolah_id = s.id) AS jml_guru,
+    (SELECT COUNT(*) FROM supervisi v WHERE v.sekolah_id = s.id) AS jml_supervisi
+    FROM sekolah s
+    WHERE s.tanggal_daftar IS NOT NULL AND TRIM(s.tanggal_daftar) <> ""
+    ORDER BY s.tanggal_daftar DESC, s.id DESC LIMIT 20');
+$otomatisTerbatas = 0;
+foreach ($otomatis as $o) {
+    if (aktivasi_terbatas($o)) {
+        $otomatisTerbatas++;
+    }
+}
+
 page_top('Pendaftaran Sekolah', 'pendaftaran');
 ?>
 <div class="grid g4">
@@ -120,12 +157,27 @@ page_top('Pendaftaran Sekolah', 'pendaftaran');
     <div class="stat-ic s"><?= ikon('school', 20) ?></div>
     <div><div class="stat-num" style="font-size:1.35rem"><?= jumlah_sekolah() ?></div><div class="stat-lbl">Sekolah aktif di aplikasi</div></div>
   </div>
+  <div class="card stat">
+    <div class="stat-ic o"><?= ikon('lock', 20) ?></div>
+    <div><div class="stat-num" style="font-size:1.35rem"><?= $otomatisTerbatas ?></div>
+      <div class="stat-lbl">Menunggu aktivasi</div></div>
+  </div>
+</div>
+
+<div class="alert alert-ok">
+  <?= ikon('check', 16) ?>
+  <span><b>Pendaftaran kini DISETUJUI OTOMATIS dengan mode terbatas.</b> Sekolah/madrasah yang mendaftar
+    lewat halaman pendaftaran langsung tercatat &amp; bisa masuk (maksimal <?= (int) AKTIVASI_MAKS_GURU ?>
+    data guru, <?= (int) AKTIVASI_MAKS_SUPERVISI_MENU ?> supervisi tiap menu, <?= (int) AKTIVASI_MAKS_JADWAL ?>
+    baris jadwal, <?= (int) AKTIVASI_MAKS_DOKUMEN ?> dokumen kiriman ke pengawas) sampai <b>kode aktivasi</b> lembaganya dimasukkan. Kirimkan kode dari
+    <a href="sekolah.php">Kelola Sekolah</a> kepada pengelolanya — atau aktifkan langsung dari kartu sekolah.</span>
 </div>
 
 <?php if ($menunggu): ?>
 <div class="alert alert-warn">
   <?= ikon('star', 16) ?>
-  <span>Ada <b><?= count($menunggu) ?></b> pendaftaran yang menunggu. Sekolah baru bisa memakai aplikasi hanya setelah Anda menekan <b>Setujui</b>.</span>
+  <span>Ada <b><?= count($menunggu) ?></b> pendaftaran <b>lama</b> yang masih menunggu (data sebelum
+    sistem persetujuan otomatis). Sekolah itu baru bisa dipakai setelah Anda menekan <b>Setujui</b>.</span>
 </div>
 <?php endif; ?>
 
@@ -141,9 +193,10 @@ page_top('Pendaftaran Sekolah', 'pendaftaran');
   <?php if (!$menunggu): ?>
     <div class="empty">
       <?= ikon('check', 34) ?>
-      <h3>Tidak ada pendaftaran baru</h3>
-      <p>Semua pendaftaran sudah ditinjau. Halaman pendaftaran publik ada di <b>daftar.php</b> dan tautannya
-        tersedia di halaman masuk.</p>
+      <h3>Tidak ada pendaftaran yang menunggu</h3>
+      <p>Pendaftaran baru kini <b>disetujui otomatis</b> (mode terbatas), jadi tidak lagi menunggu di sini —
+        daftar pendaftarnya ada pada kartu <b>Pendaftar Mandiri Terbaru</b> di bawah. Halaman pendaftaran
+        publik ada di <b>daftar.php</b> dan tautannya tersedia di halaman masuk.</p>
     </div>
   <?php else: ?>
     <div class="grid" style="gap:16px">
@@ -168,6 +221,15 @@ page_top('Pendaftaran Sekolah', 'pendaftaran');
                 &middot; mendaftar: <?= e($s['tanggal_daftar'] ? tanggal_id(substr((string) $s['tanggal_daftar'], 0, 10)) : '-') ?>
                 <?= $s['dibuat'] ? ' pukul ' . e(substr((string) $s['tanggal_daftar'], 11, 5)) : '' ?>
               </div>
+              <div class="alert alert-warn mt16" style="margin-bottom:0">
+                <?= ikon('lock', 15) ?>
+                <span>Setelah disetujui, sekolah ini berjalan <b>mode terbatas</b> (maksimal
+                  <?= (int) AKTIVASI_MAKS_GURU ?> data guru, <?= (int) AKTIVASI_MAKS_SUPERVISI_MENU ?> supervisi
+                  pada setiap menu, <?= (int) AKTIVASI_MAKS_JADWAL ?> baris jadwal,
+                  <?= (int) AKTIVASI_MAKS_DOKUMEN ?> dokumen kiriman ke pengawas) sampai
+                  <b>kode aktivasi</b> lembaganya dimasukkan. Kode &amp; tombol aktivasi ada di
+                  <a href="sekolah.php">Kelola Sekolah</a> pada kartu sekolah yang bersangkutan.</span>
+              </div>
             </div>
           </div>
 
@@ -178,7 +240,7 @@ page_top('Pendaftaran Sekolah', 'pendaftaran');
           </div>
 
           <div class="grid g2 mt16" style="gap:14px;align-items:start">
-            <form method="post" data-confirm="Setujui pendaftaran <?= e((string) $s['nama']) ?>? Sekolah langsung bisa dipakai dan menu penilaian bawaan disiapkan.">
+            <form method="post" data-confirm="Setujui pendaftaran <?= e((string) $s['nama']) ?>? Sekolah langsung bisa masuk, tetapi masih MODE TERBATAS sampai kode aktivasi lembaganya dimasukkan.">
               <?= csrf_field() ?>
               <input type="hidden" name="aksi" value="setujui"><input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
               <button class="btn btn-primary full" type="submit"><?= ikon('check', 16) ?> Setujui &amp; Aktifkan Sekolah</button>
@@ -195,6 +257,95 @@ page_top('Pendaftaran Sekolah', 'pendaftaran');
         </div>
       <?php endforeach; ?>
     </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>Pendaftar Mandiri Terbaru</h2>
+      <p>Sekolah/madrasah yang mendaftar lewat halaman pendaftaran. Statusnya <b>disetujui otomatis</b>;
+        yang berjalan <b>mode terbatas</b> perlu diberi <b>kode aktivasi</b> (ada di Kelola Sekolah).</p>
+    </div>
+    <div class="flex">
+      <span class="chip"><?= count($otomatis) ?> pendaftar</span>
+      <?php if ($otomatisTerbatas > 0): ?>
+        <span class="pill pill-warn"><?= $otomatisTerbatas ?> menunggu aktivasi</span>
+      <?php endif; ?>
+      <a class="btn btn-ghost btn-sm" href="sekolah.php"><?= ikon('building', 15) ?> Kelola Sekolah</a>
+    </div>
+  </div>
+
+  <?php if (!$otomatis): ?>
+    <div class="empty"><p class="sm mut">Belum ada sekolah yang mendaftar sendiri.</p></div>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>Nama</th><th>Penanggung Jawab</th><th>Akun Admin</th><th class="ctr">Guru</th>
+            <th class="ctr">Supervisi</th><th class="ctr">Status</th><th>Mendaftar</th><th class="ctr">Aksi</th></tr>
+        </thead>
+        <tbody>
+        <?php foreach ($otomatis as $o):
+            $terbatas = aktivasi_terbatas($o);
+            $ditolakIni = (string) $o['verifikasi'] === 'ditolak';
+            ?>
+          <tr>
+            <td><b><?= e((string) $o['nama']) ?></b>
+              <span class="tbl-sub"><?= e((string) ($o['alamat'] ?: '-')) ?></span></td>
+            <td><?= e((string) ($o['kontak_nama'] ?: ($o['kepala_sekolah'] ?: '-'))) ?>
+              <?php if ($o['kontak_telepon']): ?><span class="tbl-sub"><?= e((string) $o['kontak_telepon']) ?></span><?php endif; ?></td>
+            <td><?= e((string) ($o['admin_username'] ?: '-')) ?></td>
+            <td class="ctr"><?= (int) $o['jml_guru'] ?></td>
+            <td class="ctr"><?= (int) $o['jml_supervisi'] ?></td>
+            <td class="ctr">
+              <?php if ($ditolakIni): ?>
+                <span class="pill pill-D">Ditolak</span>
+              <?php else: ?>
+                <span class="pill <?= $terbatas ? 'pill-warn' : 'pill-ok' ?>"><?= $terbatas ? 'Mode terbatas' : 'Aktif' ?></span>
+              <?php endif; ?>
+            </td>
+            <td class="xs nowrap"><?= e((string) ($o['tanggal_daftar'] ? tanggal_id(substr((string) $o['tanggal_daftar'], 0, 10)) : '-')) ?>
+              <?php
+              // MASA UJI COBA 30 HARI (permintaan pemilik): Super Admin perlu tahu sampai kapan
+              // pendaftar yang belum diaktivasi masih bisa dipakai sebelum aplikasinya terkunci.
+              $oUji = aktivasi_status($o);
+              if ($oUji['uji'] && $oUji['uji_sampai_ts'] > 0):
+              ?>
+                <span class="tbl-sub">Uji coba <?= $oUji['uji_habis']
+                    ? 'habis ' . e(waktu_id_polos($oUji['uji_sampai']))
+                    : 'sampai ' . e(waktu_id_polos($oUji['uji_sampai'])) . ' (&plusmn;' . (int) $oUji['uji_sisa_hari'] . ' hari)' ?></span>
+              <?php endif; ?></td>
+            <td>
+              <div class="row-actions">
+                <?php // Kirim WA pengingat aktivasi ke pendaftar (nomor HP/telepon lembaga dari pendaftaran). ?>
+                <?= wa_lembaga_tombol($o, 'btn btn-ok btn-sm', 'WA', '<span class="mut xs">&mdash;</span>') ?>
+                <a class="btn btn-ghost btn-sm" href="sekolah.php" title="Buka Kelola Sekolah untuk kode aktivasi"><?= ikon('switch', 13) ?> Kelola</a>
+                <?php if ($ditolakIni): ?>
+                  <form method="post"><?= csrf_field() ?>
+                    <input type="hidden" name="aksi" value="batalkan_tolak"><input type="hidden" name="id" value="<?= (int) $o['id'] ?>">
+                    <button class="btn btn-ghost btn-sm" type="submit">Tinjau ulang</button>
+                  </form>
+                <?php else: ?>
+                  <?php // Super Admin tetap boleh MENOLAK sekolah yang sudah otomatis disetujui. ?>
+                  <form method="post" data-confirm="Tolak pendaftaran <?= e((string) $o['nama']) ?>? Sekolah tidak bisa dipakai sampai ditinjau ulang.">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="aksi" value="tolak"><input type="hidden" name="id" value="<?= (int) $o['id'] ?>">
+                    <div class="flex" style="gap:5px">
+                      <input type="text" name="alasan" placeholder="alasan penolakan" style="width:150px;padding:6px 8px;font-size:.75rem">
+                      <button class="btn btn-danger btn-sm" type="submit">Tolak</button>
+                    </div>
+                  </form>
+                <?php endif; ?>
+              </div>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Kode aktivasi tiap sekolah/madrasah ada pada kartu sekolahnya di
+      <a href="sekolah.php">Kelola Sekolah</a> (tombol <b>Salin</b>), atau aktifkan langsung dari sana.</p>
   <?php endif; ?>
 </div>
 

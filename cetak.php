@@ -72,7 +72,7 @@ $predColor = $pred === 'A' ? '#047857' : ($pred === 'B' ? '#1d4ed8' : ($pred ===
   @media print{body{background:#fff;padding:0}.toolbar{display:none}}
 </style>
 </head>
-<body>
+<body class="<?= e(tema_kelas()) ?>">
 <div class="bg-deco" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
 
 <div class="toolbar no-print">
@@ -90,7 +90,11 @@ $predColor = $pred === 'A' ? '#047857' : ($pred === 'B' ? '#1d4ed8' : ($pred ===
       <div class="kop-teks">
       <h2>Laporan Hasil Supervisi Akademik</h2>
       <p><?= e(tetap_kata(setting('nama_sekolah', 'Sekolah'))) ?></p>
-      <p style="font-size:.78rem"><?= e(setting('alamat_sekolah', '-')) ?> &middot; NPSN <?= e(setting('npsn', '-')) ?></p>
+      <?php // Identitas lembaga lengkap (alamat, wilayah, email/website, NPSN/NSM/HP) — baris yang
+            // kosong dilewati, dan nama resmi dilindungi tetap_kata(). ?>
+      <?php foreach (kop_baris_identitas() as $bk): ?>
+        <p style="font-size:.78rem"><?= e(tetap_kata($bk)) ?></p>
+      <?php endforeach; ?>
       </div>
     </div>
 
@@ -180,12 +184,15 @@ $predColor = $pred === 'A' ? '#047857' : ($pred === 'B' ? '#1d4ed8' : ($pred ===
 
     <div class="sheet-foot">
       <div class="sheet-sign">
-        <div>Mengetahui,<br>Kepala Sekolah</div>
+        <div><?= ttd_mengetahui_html() ?></div>
         <div class="space"></div>
         <u><?= e($kepalaSekolah) ?></u><br>
         <span class="sm">NIP. <?= e($nipKepalaSekolah) ?></span>
       </div>
       <div class="sheet-sign">
+        <?php // Baris "tempat, tanggal" di atas nama GURU (permintaan pemilik) — sekaligus membuat
+              // NAMA guru sejajar dengan NAMA kepala, karena blok kepala memakai dua baris label. ?>
+        <div class="ttd-tempat"><?= e(ttd_tempat_tanggal()) ?></div>
         <div>Guru yang Disupervisi,</div>
         <div class="space"></div>
         <u><?= e((string) $s['guru']) ?></u><br>

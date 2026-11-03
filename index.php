@@ -66,6 +66,22 @@ if ($u['role'] === 'pengawas') {
     // kedua jenis satuan pendidikan (permintaan pemilik).
     $istilahBinaan = 'Sekolah/Madrasah';
 
+    // Komentar/tindak lanjut yang sudah ditulis pengawas ini untuk tiap binaan + jumlah dokumen
+    // yang dikirim madrasah (dipakai sebagai penanda pada daftar binaan).
+    $komentarSayaPerBinaan = [];
+    foreach ($binaan as $s) {
+        $k = komentar_pengawas_saya((int) $s['id'], (int) $u['id']);
+        if ($k) {
+            $komentarSayaPerBinaan[(int) $s['id']] = (string) $k['diubah'];
+        }
+    }
+    $dokumenPerBinaan = dokumen_per_madrasah((int) $u['id']);
+  // PROGRES PENGIRIMAN DOKUMEN tiap binaan (permintaan pemilik): penyebutnya jumlah Nama Dokumen
+  // yang diisi Super Admin pada menu "Jenis Dokumen (Global)".
+  $progressBinaan = dokumen_progress_binaan((int) $u['id'], '');
+  $progressRataBinaan = $progressBinaan ? dokumen_progress_rata($progressBinaan) : 0;
+  $jmlNamaDokumen = dokumen_jenis_jumlah(true);
+
     page_top('Rekap Sekolah Binaan', 'index');
     ?>
     <?php if ($sekolah): ?>
@@ -128,7 +144,9 @@ if ($u['role'] === 'pengawas') {
         <div class="card-head">
           <div>
             <h2>Daftar <?= e($istilahBinaan) ?> Binaan</h2>
-            <p>Klik <b>Lihat Rekap</b> untuk rekapan supervisi, <b>Jadwal</b> untuk jadwal supervisi, atau <b>Unduh CSV</b> untuk menyimpan rekapan.</p>
+            <p>Klik <b>Lihat Rekap</b> untuk rekapan supervisi, <b>Komentar</b> untuk memberi komentar
+              tindak lanjut (terkirim ke kepala sekolah/madrasah), <b>Jadwal</b> untuk jadwal supervisi,
+              atau <b>Unduh CSV</b> untuk menyimpan rekapan.</p>
           </div>
           <span class="chip"><?= count($binaan) ?> <?= e(strtolower($istilahBinaan)) ?></span>
         </div>
@@ -138,6 +156,7 @@ if ($u['role'] === 'pengawas') {
               <tr>
                 <th>Sekolah</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th>
                 <th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th>
+                <th style="width:150px">Progres Dokumen</th>
                 <th>Supervisi terakhir</th><th></th>
               </tr>
             </thead>
@@ -147,6 +166,14 @@ if ($u['role'] === 'pengawas') {
                 <td>
                   <b><?= e((string) $s['nama']) ?></b>
                   <span class="tbl-sub">NPSN <?= e((string) ($s['npsn'] ?: '-')) ?> &middot; <?= e((string) ($s['kepala_sekolah'] ?: '-')) ?><?= (int) $s['aktif'] === 0 ? ' &middot; nonaktif' : '' ?></span>
+                  <?php if (isset($komentarSayaPerBinaan[(int) $s['id']])): ?>
+                    <span class="tbl-sub"><span class="pill pill-ok">sudah dikomentari</span>
+                      <?= e(waktu_id_polos($komentarSayaPerBinaan[(int) $s['id']])) ?></span>
+                  <?php endif; ?>
+                  <?php if (isset($dokumenPerBinaan[(int) $s['id']])): ?>
+                    <span class="tbl-sub"><a href="dokumen_madrasah.php?madrasah=<?= (int) $s['id'] ?>"><?= ikon('doc', 12) ?>
+                      <?= (int) $dokumenPerBinaan[(int) $s['id']]['jumlah'] ?> dokumen madrasah</a></span>
+                  <?php endif; ?>
                 </td>
                 <td class="ctr"><?= (int) $st['guru'] ?></td>
                 <td class="ctr"><?= (int) $st['supervisi'] ?><?php if ($st['draft'] > 0): ?><span class="tbl-sub">+<?= (int) $st['draft'] ?> draf</span><?php endif; ?></td>
@@ -158,6 +185,16 @@ if ($u['role'] === 'pengawas') {
                 </td>
                 <td class="ctr"><?= $pred ? '<span class="pill pill-' . e($pred) . '">' . e($pred) . '</span>' : '<span class="mut xs">—</span>' ?></td>
                 <td class="ctr"><?= (int) $st['cakupan'] ?>%<span class="tbl-sub"><?= (int) $st['guru_dinilai'] ?>/<?= (int) $st['guru'] ?></span></td>
+                <td>
+                  <?php $pb = $progressBinaan[(int) $s['id']]['progress'] ?? null; ?>
+                  <?php if ($pb && (int) $pb['total'] > 0): ?>
+                    <b class="xs"><?= (int) $pb['persen'] ?>%</b>
+                    <div class="progress-track sm"><i style="width:<?= (int) $pb['persen'] ?>%"></i></div>
+                    <span class="tbl-sub"><?= (int) $pb['terkirim'] ?>/<?= (int) $pb['total'] ?> nama dokumen</span>
+                  <?php else: ?>
+                    <span class="mut xs">belum ada daftar nama dokumen</span>
+                  <?php endif; ?>
+                </td>
                 <td class="xs mut">
                   <?= $st['terakhir'] ? e(tanggal_id((string) $st['terakhir'])) : 'belum ada' ?>
                   <span class="tbl-sub"><?= (int) $st['jadwal'] ?> baris jadwal</span>
@@ -169,6 +206,11 @@ if ($u['role'] === 'pengawas') {
                       <input type="hidden" name="aksi" value="masuk"><input type="hidden" name="sekolah" value="<?= (int) $s['id'] ?>">
                       <button class="btn btn-primary btn-sm" type="submit" <?= (int) $s['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('report', 14) ?> Lihat Rekap</button>
                     </form>
+                    <a class="btn btn-ghost btn-sm <?= isset($komentarSayaPerBinaan[(int) $s['id']]) ? 'btn-ok' : '' ?>"
+                       href="laporan.php?sekolah=<?= (int) $s['id'] ?>#cardKomentar"
+                       title="<?= isset($komentarSayaPerBinaan[(int) $s['id']])
+                         ? 'Anda sudah memberi komentar — klik untuk memperbarui'
+                         : 'Beri komentar/tindak lanjut untuk sekolah ini' ?>"><?= ikon('message', 14) ?> Komentar</a>
                     <a class="btn btn-ghost btn-sm" href="jadwal.php?sekolah=<?= (int) $s['id'] ?>" title="Lihat jadwal supervisi <?= e(istilah_sekolah('Sekolah')) ?> ini"><?= ikon('calendar', 14) ?> Jadwal</a>
                     <a class="btn btn-ghost btn-sm" href="laporan_export.php?sekolah=<?= (int) $s['id'] ?>" title="Unduh rekapan supervisi sekolah ini (CSV)"><?= ikon('doc', 14) ?> Unduh CSV</a>
                     <a class="btn btn-ghost btn-sm" href="laporan.php?sekolah=<?= (int) $s['id'] ?>" title="Buka rekapan di tab ini"><?= ikon('eye', 14) ?></a>
@@ -210,6 +252,42 @@ if ($u['role'] === 'pengawas') {
           <?php else: ?><div class="empty"><p class="sm mut">Belum ada data.</p></div><?php endif; ?>
         </div>
       </div>
+      <?php if ($jmlNamaDokumen > 0): ?>
+        <?php // PROGRES PENGIRIMAN DOKUMEN seluruh binaan (permintaan pemilik: "progress pengiriman
+              // dokumen di akun pengawas dan kepala sekolah ... dari jumlah nama dokumen yang diisi
+              // lewat super admin"). ?>
+        <div class="card card-tight" id="cardProgressBinaan">
+          <div class="card-head">
+            <div>
+              <h2><?= ikon('chart', 18) ?> Progres Pengiriman Dokumen Binaan</h2>
+              <p>Berapa <b>Nama Dokumen</b> yang diminta (diatur Super Admin) sudah dikirim setiap
+                sekolah/madrasah binaan Anda.</p>
+            </div>
+            <div class="flex" style="gap:8px;align-items:center">
+              <span class="pill <?= $progressRataBinaan >= 80 ? 'pill-ok' : ($progressRataBinaan >= 40 ? 'pill-warn' : 'pill-err') ?>">
+                Rata-rata <?= (int) $progressRataBinaan ?>%</span>
+              <a class="btn btn-ghost btn-sm" href="dokumen_madrasah.php#cardProgressPengawas">
+                <?= ikon('doc', 14) ?> Rincian di Dokumen Madrasah</a>
+            </div>
+          </div>
+          <div class="progress-daftar">
+            <?php foreach ($progressBinaan as $sidP => $pb): $p = $pb['progress']; ?>
+              <div class="progress-item <?= $p['persen'] >= 80 ? 'ada' : 'belum' ?>">
+                <?= ikon($p['persen'] >= 80 ? 'check' : 'clock', 14) ?>
+                <span class="progress-nama"><?= e(tetap_kata((string) $pb['nama'])) ?></span>
+                <span class="progress-track sm"><i style="width:<?= (int) $p['persen'] ?>%"></i></span>
+                <span class="pill <?= $p['persen'] >= 80 ? 'pill-ok' : ($p['persen'] >= 40 ? 'pill-warn' : 'pill-err') ?>">
+                  <?= (int) $p['persen'] ?>%</span>
+                <span class="xs mut"><?= (int) $p['terkirim'] ?>/<?= (int) $p['total'] ?> nama dokumen</span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+          <p class="hint">Progres dihitung dari jumlah <b>Nama Dokumen</b> pada menu
+            <b>Jenis Dokumen (Global)</b> (<?= (int) $jmlNamaDokumen ?> nama) dibandingkan dokumen yang
+            benar-benar dikirim madrasah itu.</p>
+        </div>
+      <?php endif; ?>
+
     <?php endif; ?>
 
     <script src="assets/vendor/chart.umd.min.js"></script>
@@ -288,7 +366,9 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
     }
     $menuLabel = array_values($menuKode);
     $menuDatasets = [];
-    $palet = ['#4F46E5', '#8B5CF6', '#0ea5e9', '#ec4899'];
+    // Palet grafik mengikuti TEMA TAMPILAN yang dipilih Super Admin (dua nada pertama = aksen
+    // tema), sehingga grafik tidak lagi selalu berwarna ungu.
+    $palet = [tema_warna('accent'), tema_warna('accent2'), '#0ea5e9', '#ec4899'];
     $i = 0;
     foreach (array_keys($menuKode) as $kode) {
         $data = [];
@@ -389,28 +469,44 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
 
     <div class="card">
       <div class="card-head">
-        <div><h2>Peringkat Sekolah</h2><p>Diurutkan dari rata-rata nilai tertinggi.</p></div>
+        <div><h2>Peringkat Sekolah</h2><p>Diurutkan dari masa aktif paling lama (paling atas), lalu nama sekolah.</p></div>
         <a class="btn btn-primary btn-sm" href="sekolah.php"><?= ikon('building', 15) ?> Kelola Sekolah</a>
       </div>
       <?php if ($rows): ?>
         <?php
+        // URUTAN (permintaan pemilik): sekolah dengan MASA AKTIF paling banyak di paling atas.
+        // Sisa waktu dibandingkan dalam detik (lihat aktivasi_urut_kunci()); sekolah yang masa
+        // aktifnya sudah habis / belum diaktivasi turun ke bawah. Bila sisa waktunya sama,
+        // diurutkan menurut nama sekolah supaya urutannya tetap.
         usort($rows, function ($a, $b) {
-            return ((float) ($b['rata'] ?? -1)) <=> ((float) ($a['rata'] ?? -1));
+            $ka = aktivasi_urut_kunci($a);
+            $kb = aktivasi_urut_kunci($b);
+            if ($ka !== $kb) {
+                return $kb <=> $ka;
+            }
+            return strcasecmp((string) ($a['nama'] ?? ''), (string) ($b['nama'] ?? ''));
         });
         ?>
         <div class="table-wrap">
           <table class="tbl">
-            <thead><tr><th style="width:44px">#</th><th>Sekolah</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th><th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th><th></th></tr></thead>
+            <thead><tr><th style="width:44px">#</th><th>Sekolah</th><th style="width:150px">Masa Aktif</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th><th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($rows as $ix => $r):
                 $rata = $r['rata'] !== null ? (float) $r['rata'] : null;
                 $cakupan = (int) $r['guru'] > 0 ? (int) round((int) $r['guru_dinilai'] / (int) $r['guru'] * 100) : 0;
+                // MASA AKTIF (permintaan pemilik): masa aktif 1 tahun / masa uji coba 15 hari /
+                // keadaan sudah habis — supaya Super Admin langsung melihat mana yang perlu diaktivasi.
+                $ma = aktivasi_masa_aktif($r);
                 ?>
               <tr>
                 <td><b><?= $ix + 1 ?></b></td>
                 <td>
                   <b><?= e((string) $r['nama']) ?></b>
                   <span class="tbl-sub">NPSN <?= e((string) ($r['npsn'] ?: '-')) ?> &middot; <?= e((string) ($r['kepala_sekolah'] ?: '-')) ?><?= (int) $r['aktif'] === 0 ? ' &middot; nonaktif' : '' ?></span>
+                </td>
+                <td class="xs" id="masaAktif<?= (int) $r['id'] ?>">
+                  <span class="pill <?= e($ma['kelas']) ?>"<?= $ma['tanggal'] !== '' ? ' title="Berakhir ' . e($ma['tanggal']) . '"' : '' ?>><?= e($ma['label']) ?></span>
+                  <span class="tbl-sub"><?= e($ma['ket']) ?></span>
                 </td>
                 <td class="ctr"><?= (int) $r['guru'] ?></td>
                 <td class="ctr"><?= (int) $r['supervisi'] ?><?php if ((int) $r['draft'] > 0): ?><span class="tbl-sub">+<?= (int) $r['draft'] ?> draf</span><?php endif; ?></td>
@@ -423,10 +519,26 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
                 <td class="ctr"><?= $rata !== null ? '<span class="pill pill-' . e(predikat_dari($rata)) . '">' . e(predikat_dari($rata)) . '</span>' : '<span class="mut xs">—</span>' ?></td>
                 <td class="ctr"><?= $cakupan ?>%<span class="tbl-sub"><?= (int) $r['guru_dinilai'] ?>/<?= (int) $r['guru'] ?></span></td>
                 <td class="right">
-                  <form method="post" action="sekolah.php" style="display:inline">
-                    <?= csrf_field() ?><input type="hidden" name="aksi" value="masuk"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
-                    <button class="btn btn-ghost btn-sm" type="submit" <?= (int) $r['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('switch', 14) ?> Kelola</button>
-                  </form>
+                  <?php
+                  // Tiga aksi ringkas (tanpa teks, dengan keterangan `title`) supaya kolom Aksi tetap
+                  // sempit dan tinggi baris tabel tidak melar:
+                  //   WA    → kirim WhatsApp (nomor HP/telepon dari menu Profil & Pengaturan);
+                  //   Kelola→ masuk konteks sekolah;
+                  //   Hapus → membuka Zona Berbahaya kartu sekolah di sekolah.php (?hapus=ID); penghapusan
+                  //           tetap WAJIB melewati konfirmasi "ketik HAPUS", jadi tidak terhapus sekali klik.
+                  ?>
+                  <div class="flex" style="gap:6px;justify-content:flex-end;flex-wrap:nowrap">
+                    <?= wa_lembaga_tombol($r, 'btn btn-ok btn-sm', '', '<span class="mut xs">&mdash;</span>') ?>
+                    <form method="post" action="sekolah.php" style="display:inline">
+                      <?= csrf_field() ?><input type="hidden" name="aksi" value="masuk"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                      <button class="btn btn-ghost btn-sm" type="submit" title="Kelola data sekolah ini" aria-label="Kelola" <?= (int) $r['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('switch', 15) ?></button>
+                    </form>
+                    <a class="btn btn-danger btn-sm"
+                       href="sekolah.php?hapus=<?= (int) $r['id'] ?>#hapus-<?= (int) $r['id'] ?>"
+                       title="Hapus sekolah <?= e((string) $r['nama']) ?> (membuka Zona Berbahaya — wajib ketik HAPUS)"
+                       aria-label="Hapus sekolah"
+                       data-confirm="Buka Zona Berbahaya sekolah <?= e((string) $r['nama']) ?>? Penghapusan permanen masih memerlukan konfirmasi dengan mengetik HAPUS."><?= ikon('trash', 15) ?></a>
+                  </div>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -722,6 +834,15 @@ foreach (['A', 'B', 'C', 'D'] as $p) {
     }
 }
 
+// Komentar/tindak lanjut pengawas untuk sekolah ini (permintaan pemilik: "terkirim ke akun kepala
+// madrasah untuk dilihat hasil komentar atau tindak lanjut tersebut") — jumlah + isi terbaru.
+$komentarJml = komentar_madrasah_jumlah($sid);
+$komentarTerbaru = komentar_madrasah_terbaru($sid, 3);
+// Hasil TINJAUAN PENGAWAS atas dokumen madrasah (disetujui / direvisi / ditolak + keterangan),
+// supaya kepala sekolah/madrasah langsung tahu tindak lanjutnya.
+$dokTinjau = dokumen_ditinjau_sekolah($sid, 3);
+$dokTinjauJml = dokumen_ditinjau_jumlah($sid);
+
 page_top('Dashboard', 'index');
 ?>
 <div class="grid g4">
@@ -879,6 +1000,126 @@ page_top('Dashboard', 'index');
   <?php endif; ?>
 </div>
 
+<?php if ($komentarJml > 0): ?>
+  <div class="card" id="cardKomentarPengawas">
+    <div class="card-head">
+      <div>
+        <h2><?= ikon('message', 18) ?> Komentar &amp; Tindak Lanjut dari Pengawas</h2>
+        <p>Catatan pengawas untuk seluruh hasil rekapan supervisi sekolah/madrasah ini.</p>
+      </div>
+      <div class="flex">
+        <span class="chip"><?= (int) $komentarJml ?> komentar</span>
+        <a class="btn btn-ghost btn-sm" href="laporan.php#cardKomentar"><?= ikon('report', 14) ?> Lihat di Laporan</a>
+      </div>
+    </div>
+    <div class="komentar-list">
+      <?php foreach ($komentarTerbaru as $k): ?>
+        <div class="komentar-item">
+          <div class="komentar-head">
+            <b><?= e((string) ($k['pengawas'] ?: 'Pengawas')) ?></b>
+            <span class="pill pill-gray">Pengawas</span>
+            <span class="xs mut"><?= e(waktu_id_polos((string) ($k['diubah'] ?: $k['dibuat']))) ?></span>
+          </div>
+          <p class="komentar-isi"><?= nl2br(e((string) $k['isi'])) ?></p>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <?php if ($komentarJml > count($komentarTerbaru)): ?>
+      <p class="hint" style="margin-top:12px">Menampilkan <?= count($komentarTerbaru) ?> komentar terbaru
+        dari <?= (int) $komentarJml ?> komentar pengawas.</p>
+    <?php endif; ?>
+  </div>
+<?php endif; ?>
+
+<?php if (($u['role'] === 'admin' || is_super()) && $dokTinjauJml > 0): ?>
+  <div class="card" id="cardTinjauanDokumen">
+    <div class="card-head">
+      <div>
+        <h2><?= ikon('doc', 18) ?> Hasil Tinjauan Dokumen oleh Pengawas</h2>
+        <p>Status dokumen yang Anda kirim: disetujui, direvisi, atau ditolak — beserta keterangan/alasannya.</p>
+      </div>
+      <div class="flex">
+        <span class="chip"><?= (int) $dokTinjauJml ?> dokumen ditinjau</span>
+        <a class="btn btn-ghost btn-sm" href="dokumen_kirim.php#cardHasilTinjauan"><?= ikon('doc', 14) ?> Buka Daftar Dokumen</a>
+      </div>
+    </div>
+    <div class="komentar-list">
+      <?php foreach ($dokTinjau as $dt): $st = (string) $dt['status']; ?>
+        <div class="komentar-item">
+          <div class="komentar-head">
+            <b><?= e((string) $dt['nama_dokumen']) ?></b>
+            <span class="pill <?= dokumen_status_pil($st) ?>">
+              <?= ikon(dokumen_status_ikon($st), 12) ?> <?= e(dokumen_status_label($st)) ?></span>
+            <span class="xs mut">oleh <?= e((string) ($dt['peninjau'] ?: 'Pengawas')) ?>,
+              <?= e(waktu_id_polos((string) $dt['ditinjau_pada'])) ?></span>
+          </div>
+          <p class="komentar-isi"><?= trim((string) ($dt['catatan'] ?? '')) !== ''
+            ? nl2br(e((string) $dt['catatan']))
+            : '<span class="mut">Tanpa keterangan tambahan dari pengawas.</span>' ?></p>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+<?php endif; ?>
+
+<?php if ($u['role'] === 'admin'): ?>
+  <?php
+  // PROGRES PENGIRIMAN DOKUMEN (permintaan pemilik): "Tambahkan fitur progress pengiriman dokumen di
+  // akun pengawas dan kepala sekolah. Progres dilihat dari jumlah nama dokumen yang diisi lewat
+  // super admin." → penyebutnya jumlah Nama Dokumen AKTIF pada menu Jenis Dokumen (Global).
+  $progDok = dokumen_progress($sid, dokumen_ta_berlaku('', $sekolah));
+  ?>
+  <?php if (!$progDok['jenis_kosong']): ?>
+    <div class="card card-tight no-print" id="cardProgressDokumenDashboard">
+      <div class="card-head">
+        <div>
+          <h3><?= ikon('chart', 16) ?> Progres Pengiriman Dokumen</h3>
+          <p class="sm mut" style="margin:4px 0 0">
+            <?php if ($progDok['ta'] !== ''): ?>Tahun Ajaran <?= e($progDok['ta']) ?> &middot; <?php endif; ?>
+            <b><?= (int) $progDok['terkirim'] ?></b> dari <b><?= (int) $progDok['total'] ?></b> nama
+            dokumen sudah dikirim ke pengawas.</p>
+        </div>
+        <div class="flex" style="gap:8px;align-items:center">
+          <span class="pill <?= $progDok['persen'] >= 80 ? 'pill-ok' : ($progDok['persen'] >= 40 ? 'pill-warn' : 'pill-err') ?>">
+            <?= (int) $progDok['persen'] ?>%</span>
+          <a class="btn btn-primary btn-sm" href="dokumen_kirim.php#cardProgressDokumen">
+            <?= ikon('upload', 15) ?> Buka Kirim Dokumen</a>
+        </div>
+      </div>
+      <div class="progress-track" role="img" aria-label="Progres pengiriman dokumen <?= (int) $progDok['persen'] ?> persen">
+        <i style="width:<?= (int) $progDok['persen'] ?>%"></i>
+      </div>
+      <div class="progress-daftar mt16">
+        <?php foreach ($progDok['daftar'] as $pj): ?>
+          <div class="progress-item <?= $pj['terkirim'] ? 'ada' : 'belum' ?>">
+            <?= ikon($pj['terkirim'] ? 'check' : 'clock', 14) ?>
+            <span class="progress-nama"><?= e($pj['nama']) ?></span>
+            <?php if ($pj['terkirim']): ?>
+              <span class="pill pill-ok"><?= (int) $pj['jumlah'] ?> berkas</span>
+            <?php else: ?>
+              <span class="pill pill-warn">belum dikirim</span>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <?php if ((int) $progDok['belum'] > 0): ?>
+        <p class="hint">Masih ada <?= (int) $progDok['belum'] ?> nama dokumen yang belum dikirim —
+          kirim lewat menu <b>Kirim Dokumen ke Pengawas</b>.</p>
+      <?php endif; ?>
+    </div>
+  <?php else: ?>
+    <div class="card card-tight no-print" id="cardKirimDokumenInfo">
+      <div class="flex between">
+        <div>
+          <h3><?= ikon('send', 16) ?> Kirim Dokumen ke Pengawas</h3>
+          <p class="sm mut" style="margin:4px 0 0">Daftar <b>Nama Dokumen</b> belum diisi Super Admin,
+            jadi progres belum dapat dihitung. Dokumen tetap dapat dikirim lewat menu di samping.</p>
+        </div>
+        <a class="btn btn-primary btn-sm" href="dokumen_kirim.php"><?= ikon('upload', 15) ?> Buka Kirim Dokumen</a>
+      </div>
+    </div>
+  <?php endif; ?>
+<?php endif; ?>
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script>
 window.VS_TH = <?= json_encode(thresholds(), JSON_UNESCAPED_UNICODE) ?>;
