@@ -135,8 +135,9 @@ function page_top(string $judul, string $menu = ''): void
       // Yang TETAP di luar sub menu: Ringkasan Semua Sekolah, Kelola Sekolah, Pendaftaran Sekolah,
       // Log Aktivitas, dan Akun (Saya) — sesuai daftar menu yang diminta.
       // ==========================================================================================
-      $halamanLayanan = ['pengawas.php', 'biaya_aktivasi.php', 'tema_tampilan.php', 'instrumen.php',
-          'instrumen_butir.php', 'dokumen_jenis.php', 'tentang.php', 'landing.php', 'dokumen_semua.php'];
+      $halamanLayanan = ['pengawas.php', 'rekap_kepala.php', 'biaya_aktivasi.php', 'tema_tampilan.php',
+          'instrumen.php', 'instrumen_butir.php', 'dokumen_jenis.php', 'tentang.php', 'landing.php',
+          'dokumen_semua.php'];
       $layananAktif = in_array($here, $halamanLayanan, true);
       $jmlPengawasTinjau = pengawas_menunggu_jumlah();
       $jmlPesanLanding = landing_pesan_baru();
@@ -207,6 +208,17 @@ function page_top(string $judul, string $menu = ''): void
           <a class="nav-item <?= $here === 'dokumen_semua.php' ? 'on' : '' ?>" href="dokumen_semua.php">
             <?= ikon('folder') ?><span>Semua Dokumen Madrasah</span>
             <?php if ($jmlDokSemua > 0): ?><span class="pill pill-gray" style="margin-left:auto"><?= (int) $jmlDokSemua ?></span><?php endif; ?>
+          </a>
+          <?php
+          // REKAP KEPALA SEKOLAH (permintaan pemilik): rekapan nama kepala sekolah & nomor HP tiap
+          // lembaga + tombol cetak/PDF. Diletakkan PALING AKHIR pada sub menu Layanan (sama seperti
+          // menu serupa di aplikasi e-GURU). Lencana = jumlah lembaga yang datanya belum lengkap,
+          // supaya Super Admin langsung tahu ada yang perlu dilengkapi.
+          $jmlBelumLengkap = rekap_kepala_ringkas(rekap_kepala_daftar())['belum_lengkap'];
+          ?>
+          <a class="nav-item <?= $here === 'rekap_kepala.php' ? 'on' : '' ?>" href="rekap_kepala.php">
+            <?= ikon('users') ?><span>Rekap Kepala Sekolah</span>
+            <?php if ($jmlBelumLengkap > 0): ?><span class="pill pill-gray" style="margin-left:auto" title="Lembaga yang nama kepala/nomor HP-nya belum lengkap"><?= (int) $jmlBelumLengkap ?> belum</span><?php endif; ?>
           </a>
         </div>
       </details>

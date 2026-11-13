@@ -259,6 +259,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .alert-ok{background:rgba(16,185,129,.13);border-color:rgba(16,185,129,.3);color:#065f46}
 .alert-warn{background:rgba(217,119,6,.13);border-color:rgba(217,119,6,.3);color:#92400e}
 .alert-err{background:rgba(220,38,38,.11);border-color:rgba(220,38,38,.28);color:#991b1b}
+/* Keterangan netral (mis. aturan "satu sekolah hanya satu pengawas" pada halaman Akun Pengawas).
+   Warnanya mengikuti TEMA TAMPILAN — jangan memakai warna aksen langsung di sini. */
+.alert-info{background:rgba(var(--accent-rgb),.11);border-color:rgba(var(--accent-rgb),.3);color:var(--accent-deep)}
 
 /* ===== Penilaian skor ===== */
 .butir{border:1px solid rgba(99,95,130,.16);border-radius:14px;background:rgba(255,255,255,.5);padding:15px 16px;margin-bottom:12px}
@@ -269,6 +272,10 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   display:grid;place-items:center;font-size:.78rem;font-weight:800;flex:0 0 auto;margin-top:1px;
 }
 .butir-komponen{font-weight:700;font-size:.9rem}
+/* Nama pengguna/NIP yang panjang (mis. "iqdar.najmi.s.abdul.se.m.pd") tidak boleh membuat halaman
+   meluber mendatar di HP — teksnya dipatahkan bila memang tidak muat (terukur: halaman Akun Pengawas
+   meluber 10 px pada layar 390 px sebelum aturan ini ada). */
+.butir-komponen,.butir-indikator{overflow-wrap:anywhere;word-break:break-word}
 .butir-indikator{color:var(--muted);font-size:.8rem;margin-top:3px;line-height:1.45}
 .skala{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .skala label{
@@ -1417,3 +1424,69 @@ body.tema-emas .nav-sec{color:var(--accent-deep2)}
 .tema-aksi{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
 .tema-aksi form{margin:0}
 .tema-catatan{font-size:.82rem;color:var(--muted);line-height:1.6;margin:0}
+
+/* ===== CARI NAMA SEKOLAH pada kartu "Peringkat Sekolah" (dasbor Super Admin) =====
+   Permintaan pemilik: kotak cari di kepala kartu, di antara judul dan tombol aksi, supaya
+   pencarian nama sekolah cepat pada daftar yang panjang (88+ lembaga).
+   Warna memakai token tema (var(--accent), rgba(var(--accent-rgb),…)) supaya ikut berganti
+   saat Super Admin memilih tema lain — jangan menulis warna aksen langsung di sini. */
+.cari-sekolah{position:relative;display:flex;align-items:center;gap:7px;flex:1 1 240px;min-width:190px;max-width:330px;
+  padding:0 10px;height:38px;border-radius:11px;background:rgba(255,255,255,.72);
+  border:1px solid rgba(99,95,130,.18);transition:border-color .15s,box-shadow .15s}
+.cari-sekolah:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.16);
+  background:#fff}
+.cari-sekolah .cari-ikon{display:inline-flex;color:var(--muted);flex:0 0 auto}
+.cari-sekolah:focus-within .cari-ikon{color:var(--accent)}
+/* Tema memberi `input{width:100%}`, jadi kotak di dalamnya WAJIB dikosongkan border/padding-nya
+   (kalau tidak, kotak cari tampak seperti dua kotak bertumpuk). */
+.cari-sekolah input[type=search]{flex:1 1 auto;width:100%;min-width:0;height:100%;border:0;padding:0;
+  background:transparent;font-size:.86rem;color:var(--ink);box-shadow:none;appearance:none;-webkit-appearance:none}
+.cari-sekolah input[type=search]:focus{outline:none;box-shadow:none}
+.cari-sekolah input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.cari-bersih{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:22px;height:22px;padding:0;border:0;border-radius:999px;cursor:pointer;
+  background:rgba(99,95,130,.13);color:var(--muted);line-height:1}
+.cari-bersih:hover{background:rgba(var(--accent-rgb),.16);color:var(--accent-deep)}
+.cari-bersih[hidden]{display:none !important}
+/* Baris keterangan jumlah hasil + tombol "Tampilkan semua" (muncul hanya saat mencari). */
+.cari-info{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 12px;
+  font-size:.82rem;color:var(--muted)}
+.cari-info[hidden]{display:none !important}
+.cari-kosong{padding:26px 10px;text-align:center;font-size:.88rem;color:var(--muted)}
+/* Tabel yang sedang disaring: baris yang tidak cocok benar-benar tidak ditampilkan
+   (memakai atribut `hidden`, jadi tetap benar walau ada aturan display lain). */
+#tblPeringkat tbody tr[hidden]{display:none !important}
+@media (max-width:640px){
+  .cari-sekolah{max-width:none;flex:1 1 100%}
+}
+
+/* ============================================================================
+   GAMBAR HALAMAN DEPAN (LANDING) — DILINDUNGI (v1.32.0)
+   Permintaan pemilik: gambar slider, foto testimoni, dan foto pengembang pada halaman depan
+   "tidak bisa dibuka atau diklik kanan atau dilihat alamat sumbernya agar tidak bisa diambil atau
+   di download oleh pengunjung".
+
+   • `pointer-events:none` → gambar tidak pernah menjadi sasaran sentuhan/klik, sehingga menu bawaan
+     peramban ("Simpan gambar sebagai…", "Buka gambar di tab baru"), seret-lepas ke desktop, dan menu
+     tekan-lama di HP tidak pernah muncul untuk gambar itu. Sentuhan jatuh ke wadahnya.
+   • `data-lindung-wadah` → wadah di sekitar gambar: lapisan tembus pandang (::after) menutup area
+     gambar dan teks di dalamnya tidak ikut terseleksi saat ditekan lama
+     (`-webkit-touch-callout:none`).
+   • `initLindungGambar()` (assets/app.js) menutup menu klik-kanan pada wadah gambar sebagai lapisan
+     kedua (untuk peramban yang tetap memunculkan menu dari elemen induk).
+   Alamat sumber foto sendiri tidak pernah tercetak di HTML — lihat `gambar.php` + `inc/gambar.php`.
+   ============================================================================ */
+img.lp-lindung{
+  pointer-events:none;
+  -webkit-user-select:none;user-select:none;
+  -webkit-user-drag:none;
+  -webkit-touch-callout:none;
+}
+[data-lindung-wadah]{position:relative;-webkit-touch-callout:none}
+[data-lindung-wadah]::after{content:"";position:absolute;inset:0;z-index:2}
+[data-lindung-wadah] img.lp-lindung{position:relative;z-index:1}
+/* Saat dicetak, lapisan penutup tidak diperlukan (dan tidak boleh menutupi gambar). */
+@media print{
+  [data-lindung-wadah]::after{display:none}
+  img.lp-lindung{pointer-events:auto}
+}

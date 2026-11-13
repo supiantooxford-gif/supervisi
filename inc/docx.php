@@ -128,10 +128,14 @@ function docx_tabel(array $kolom, array $baris): string
 }
 
 /**
- * Bangun dokumen .docx dari daftar blok. Halaman A4 POTRAIT (21 x 29,7 cm) dengan margin 2,5 cm —
- * mengikuti bentuk lembar cetak HTML-nya. `'halaman' => true` menyisipkan pemisah halaman.
+ * Bangun dokumen .docx dari daftar blok. Bawaannya halaman A4 POTRAIT (21 x 29,7 cm) dengan margin
+ * 2,5 cm — mengikuti bentuk lembar cetak HTML-nya. `'halaman' => true` menyisipkan pemisah halaman.
+ *
+ * $lanskap = true → A4 LANDSCAPE (29,7 x 21 cm). Diperlukan untuk daftar peringkat sekolah
+ * (`peringkat_docx.php`) yang berkolom banyak, agar bentuknya sama dengan lembar cetaknya.
+ * Pemanggil lama (laporan_docx.php) tidak berubah karena parameter ini opsional.
  */
-function docx_bangun(array $blok, string $judul = ''): string
+function docx_bangun(array $blok, string $judul = '', bool $lanskap = false): string
 {
     $isi = '';
     foreach ($blok as $b) {
@@ -145,11 +149,15 @@ function docx_bangun(array $blok, string $judul = ''): string
         }
         $isi .= docx_par((string) ($b['teks'] ?? ''), $b);
     }
+    $pgSz = $lanskap ? '<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>' : '<w:pgSz w:w="11906" w:h="16838"/>';
+    // Margin potrait tetap 2,5 cm seperti semula (laporan susun); landscape dirapatkan menjadi 2 cm
+    // supaya tabel berkolom banyak (peringkat sekolah) tetap lega.
+    $margin = $lanskap ? 1134 : 1418;
     $dokumen = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
         . '<w:body>' . $isi
-        . '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
-        . '<w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="708" w:footer="708" w:gutter="0"/>'
+        . '<w:sectPr>' . $pgSz
+        . '<w:pgMar w:top="' . $margin . '" w:right="' . $margin . '" w:bottom="' . $margin . '" w:left="' . $margin . '" w:header="708" w:footer="708" w:gutter="0"/>'
         . '</w:sectPr></w:body></w:document>';
 
     $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'

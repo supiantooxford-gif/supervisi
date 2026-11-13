@@ -5,7 +5,7 @@
 declare(strict_types=1);
 
 define('APP_NAME', 'Supervisi Guru');
-define('APP_VERSION', '1.26.1');
+define('APP_VERSION', '1.33.0');
 
 // Unggahan berkas pengguna lewat media proxy platform (token dibaca server-side
 // dari berkas .vibecoder-media-token; JANGAN pernah dikirim ke browser).
@@ -103,7 +103,23 @@ define('AKTIVASI_UJI_SISA_MINIMAL', 3);
 define('AKTIVASI_INGAT_HARI', 7);
 
 // Nomor WA Admin aplikasi (ditampilkan pada petunjuk aktivasi). Ubah di sini bila berganti.
+// Juga dipakai tombol bantuan pada halaman PENDAFTARAN ketika lembaga yang mendaftar ternyata
+// pernah terdaftar dan statusnya DINONAKTIFKAN Admin (lihat pendaftaran_sekolah_nonaktif()).
 define('AKTIVASI_WA_ADMIN', '085394726089');
+
+// ---------------------------------------------------------------------------------------------
+// PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik)
+// "Madrasah/sekolah yang statusnya di nonaktifkan oleh admin tidak bisa lagi melakukan
+// pendaftaran. Akan terdeteksi nama sekolah/lembaganya dan kepala sekolah/madrasahnya pernah
+// mendaftar (walaupun beda huruf besar maupun kecil). Sehingga ketika klik daftar langsung
+// diarahkan ke WA 085394726089 untuk minta bantuan."
+//
+// Pembandingnya nama yang DINORMALKAN (huruf kecil, tanpa spasi/titik/koma — lihat
+// nama_kunci_pembanding()). Panjang kunci minimal di bawah mencegah "kecocokan" palsu dari isian
+// yang terlalu pendek (mis. "-", "MA", atau nama kepala yang hanya berisi gelar).
+// ---------------------------------------------------------------------------------------------
+define('DAFTAR_NAMA_MIN', 4);    // panjang minimal kunci NAMA lembaga agar dipakai membandingkan
+define('DAFTAR_KEPALA_MIN', 6);  // panjang minimal kunci NAMA kepala sekolah/madrasah
 
 // ---------------------------------------------------------------------------------------------
 // PERMOHONAN KODE AKTIVASI — kartu "Aktivasi Sekolah/Madrasah" pada menu Status & Aktivasi
@@ -161,7 +177,11 @@ if (function_exists('mb_internal_encoding')) {
     mb_internal_encoding('UTF-8');
 }
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
+// v1.32.0 — endpoint gambar (`gambar.php`) sengaja TIDAK memakai sesi: satu halaman depan memuat
+// belasan gambar sekaligus, dan setiap permintaan gambar yang membuka sesi akan mengunci berkas sesi
+// (permintaan lain menunggu) serta mengirim cookie pada balasan gambar. Berkas itu menetapkan
+// `SUPERVISI_TANPA_SESI` sebelum memuat konfigurasi ini.
+if (session_status() !== PHP_SESSION_ACTIVE && !defined('SUPERVISI_TANPA_SESI')) {
     // Simpan file sesi di dalam folder aplikasi agar tidak bergantung pada
     // folder sesi sistem yang mungkin tidak dapat ditulis.
     $sessDir = __DIR__ . '/../data/sessions';

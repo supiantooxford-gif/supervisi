@@ -1,0 +1,1 @@
+redirect_after|s:104:"/supervisi-guru/.well-known/resource-that-should-not-exist-whose-status-code-should-not-be-200/login.php";landing_captcha|a:2:{s:1:"a";i:9;s:1:"b";i:2;}csrf|s:32:"7198a5ce25b40b5eab5646645477020c";

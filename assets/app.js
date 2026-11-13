@@ -137,6 +137,87 @@
     });
   }
 
+  /* ---------- CARI NAMA SEKOLAH pada daftar Peringkat Sekolah (dasbor Super Admin) ----------
+   * Permintaan pemilik: kotak cari di kepala kartu "Peringkat Sekolah" supaya pencarian nama
+   * sekolah cepat pada daftar yang panjang (88+ lembaga).
+   *
+   * Penyaringan berjalan SAAT DIKETIK (tanpa memuat ulang halaman). Yang dikerjakan:
+   *   1. menyembunyikan/menampilkan baris menurut `data-cari` (nama sekolah + NPSN + kepala
+   *      sekolah, sudah huruf kecil dari server) — BUKAN textContent seluruh baris, supaya
+   *      angka/predikat tidak ikut dicocokkan dengan kata kunci;
+   *   2. MENOMORI ULANG kolom "#" (tanpa ini nomornya melompat: 1, 2, 5, 9 …);
+   *   3. menampilkan jumlah hasil + tombol "Tampilkan semua" & tombol ✕ untuk menghapus kata kunci;
+   *   4. menampilkan baris "tidak ada yang cocok" bila hasilnya nol.
+   * Beberapa kata kunci dipisah spasi harus SEMUA cocok (mis. "mts bahrul").
+   * Tanpa JavaScript kotak cari tidak berfungsi, tetapi tabel tetap tampil utuh.
+   */
+  function initCariSekolah() {
+    var inp = document.getElementById('cariSekolah');
+    if (!inp) return;
+    var tbl = document.getElementById(inp.dataset.target || 'tblPeringkat');
+    if (!tbl) return;
+    var tbody = tbl.querySelector('tbody');
+    if (!tbody) return;
+    var kosong = document.getElementById('cariKosong');
+    var bersih = document.getElementById('cariSekolahBersih');
+    var info = document.getElementById('cariInfo');
+    var infoJumlah = document.getElementById('cariJumlah');
+    var tombolSemua = document.getElementById('cariTampilSemua');
+
+    // Teks yang dicari = SEL NAMA SEKOLAH (kolom ke-2: nama + baris kecil NPSN/kepala sekolah).
+    // SENGAJA tidak memakai textContent seluruh baris: angka guru/supervisi/nilai/predikat ikut
+    // tercocokkan kalau begitu (mis. mengetik "7" akan menampilkan sekolah dengan nilai 7x,xx).
+    // Teks dihitung SEKALI di sini (bukan tiap ketikan) supaya penyaringan tetap ringan pada
+    // daftar yang panjang. Baris `#cariKosong` (keadaan kosong) tidak ikut disaring.
+    var baris = [].slice.call(tbody.querySelectorAll('tr')).filter(function (tr) {
+      return tr.id !== 'cariKosong';
+    });
+    baris.forEach(function (tr) {
+      var sel = tr.cells && tr.cells.length > 1 ? tr.cells[1] : tr;
+      var teks = (sel.textContent || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      tr.setAttribute('data-cari', teks);
+    });
+
+    function terapkan() {
+      var kunci = (inp.value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+      var tampil = 0;
+      baris.forEach(function (tr) {
+        var teks = tr.getAttribute('data-cari') || '';
+        var cocok = kunci.every(function (k) { return teks.indexOf(k) !== -1; });
+        tr.hidden = !cocok;
+        if (cocok) {
+          tampil++;
+          // Nomor urut dirapikan agar tetap 1..n setelah penyaringan.
+          var sel = tr.querySelector('td b');
+          if (sel) sel.textContent = String(tampil);
+        }
+      });
+      if (kosong) kosong.hidden = tampil > 0 || kunci.length === 0;
+      if (bersih) bersih.hidden = kunci.length === 0;
+      if (info) info.hidden = kunci.length === 0;
+      if (infoJumlah) {
+        infoJumlah.textContent = tampil === 1
+          ? 'Ditemukan 1 sekolah/madrasah.'
+          : 'Ditemukan ' + tampil + ' sekolah/madrasah.';
+      }
+    }
+
+    function bersihkan() {
+      inp.value = '';
+      terapkan();
+      inp.focus();
+    }
+
+    inp.addEventListener('input', terapkan);
+    inp.addEventListener('search', terapkan);
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); bersihkan(); }
+    });
+    if (bersih) bersih.addEventListener('click', bersihkan);
+    if (tombolSemua) tombolSemua.addEventListener('click', bersihkan);
+    terapkan();   // jaga-jaga bila peramban memulihkan isi kotak cari setelah muat ulang
+  }
+
   /* ---------- Foto profil: pratinjau & pemeriksaan ukuran ---------- */
   function initFoto() {
     var inp = document.getElementById('foto');
@@ -1271,13 +1352,50 @@
     }
   }
 
+  /**
+   * GAMBAR HALAMAN DEPAN DILINDUNGI (v1.32.0).
+   *
+   * Permintaan pemilik: gambar slider/testimoni/foto pengembang pada halaman depan tidak bisa
+   * diklik kanan, diseret, atau dibuka alamat sumbernya. Alamat sumbernya sendiri sudah tidak
+   * pernah dicetak di HTML (semua lewat `gambar.php`), sedangkan fungsi ini lapisan kedua di sisi
+   * peramban: membatalkan menu klik-kanan & seret-lepas pada gambar ber-`data-lindung` dan pada
+   * wadahnya (`data-lindung-wadah`).
+   */
+  function initLindungGambar() {
+    var gambar = document.querySelectorAll('img[data-lindung]');
+    if (!gambar.length) return;
+
+    for (var i = 0; i < gambar.length; i++) {
+      var im = gambar[i];
+      im.setAttribute('draggable', 'false');
+      im.addEventListener('dragstart', function (e) { e.preventDefault(); });
+    }
+
+    function terlindung(t) {
+      if (!t || !t.closest) return false;
+      return !!(t.closest('[data-lindung-wadah]') || t.closest('img[data-lindung]'));
+    }
+
+    document.addEventListener('contextmenu', function (e) {
+      if (!terlindung(e.target)) return;
+      e.preventDefault();
+      return false;
+    });
+
+    document.addEventListener('dragstart', function (e) {
+      if (terlindung(e.target)) e.preventDefault();
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initNav();
     initLanding();
     initKartu3D();
+    initLindungGambar();
     initConfirm();
     initSkorForm();
     initTableSearch();
+    initCariSekolah();
     initPrint();
     initFoto();
     initLogo();

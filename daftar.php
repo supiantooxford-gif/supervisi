@@ -23,6 +23,9 @@ require_once __DIR__ . '/inc/init.php';
 $err = [];
 $berhasil = false;
 $pengawasBaru = null; // diisi bila pendaftar mengisi Nama Pengawas Bina
+// Diisi bila nama lembaga/kepala yang diisi SAMA dengan lembaga yang sudah ada dan statusnya
+// DINONAKTIFKAN Admin (permintaan pemilik) — pendaftaran tidak diproses, pendaftar diarahkan ke WA.
+$terblokir = null;
 // Isian identitas lembaga (permintaan pemilik) — sama dengan halaman Identitas Madrasah/Sekolah,
 // ditambah pilihan JENIS (Sekolah Umum / Madrasah).
 $form = [
@@ -57,6 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password2 = (string) ($_POST['password2'] ?? '');
     $jawab = trim((string) ($_POST['captcha'] ?? ''));
     $setuju = !empty($_POST['setuju']);
+
+    // PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik): bila nama
+    // sekolah/madrasah ATAU nama kepala sekolah/madrasah yang diisi sama dengan lembaga yang
+    // sudah terdaftar dan statusnya TIDAK AKTIF (dinonaktifkan Admin / pendaftarannya ditolak),
+    // pendaftaran TIDAK diproses — pendaftar langsung diarahkan ke WhatsApp Admin aplikasi supaya
+    // datanya tidak terduplikasi (lihat pendaftaran_sekolah_nonaktif() di inc/helpers.php).
+    $terblokir = pendaftaran_sekolah_nonaktif($form['nama'], $form['kepala_sekolah']);
 
     // Jenis lembaga: madrasah hanya bila benar-benar dipilih; NSM hanya bermakna pada madrasah
     // (sekolah umum tidak punya NSM) sehingga isinya tidak disimpan pada jenis umum.
@@ -113,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err[] = 'Anda sudah mengirim beberapa pendaftaran dari perangkat ini. Hubungi Admin bila belum mendapat kabar.';
     }
 
-    if (!$err) {
+    if (!$err && !$terblokir) {
         db()->exec('BEGIN IMMEDIATE');
         try {
             q('INSERT INTO sekolah (nama, npsn, nsm, alamat, desa, kecamatan, kabupaten, provinsi,
@@ -202,6 +212,19 @@ $sudahMasuk = $siapa !== null;
   .langkah b{display:block;font-size:.86rem}
   .langkah span{font-size:.79rem;color:var(--muted)}
   .langkah i{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:.78rem;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));flex:0 0 auto}
+  /* PENDAFTARAN ULANG LEMBAGA YANG DINONAKTIFKAN ADMIN (permintaan pemilik): kartu pemberitahuan
+     + tombol WhatsApp bantuan. Memakai token tema supaya ikut berganti tema aplikasi. */
+  .blokir-aksi{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+  .blokir-wa{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:11px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;
+    font-size:.87rem;text-decoration:none;box-shadow:0 10px 22px -12px rgba(var(--accent-rgb),.9)}
+  .blokir-wa:hover{color:#fff;text-decoration:none;filter:brightness(1.05)}
+  .blokir-nomor{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:7px 12px;
+    border-radius:9px;background:rgba(var(--accent-rgb),.10);color:var(--accent-deep);
+    font-weight:800;font-size:.9rem;letter-spacing:.02em}
+  .blokir-data{display:grid;gap:6px;margin:14px 0 0;padding:13px 15px;border-radius:12px;
+    background:rgba(255,255,255,.62);border:1px solid rgba(99,95,130,.16);font-size:.86rem}
+  .blokir-data span{color:var(--muted);font-size:.78rem}
 </style>
 </head>
 <body class="<?= e(tema_kelas()) ?>">
@@ -293,6 +316,80 @@ $sudahMasuk = $siapa !== null;
 
       <div class="flex mt16" style="justify-content:center">
         <a class="btn btn-primary" href="login.php"><?= ikon('key', 16) ?> Ke Halaman Masuk</a>
+      </div>
+    <?php elseif ($terblokir): ?>
+      <?php
+      // PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik):
+      // "Madrasah/sekolah yang statusnya di nonaktifkan oleh admin tidak bisa lagi melakukan
+      //  pendaftaran ... sehingga ketika klik daftar langsung diarahkan ke WA 085394726089 untuk
+      //  minta bantuan". Pendaftaran TIDAK diproses (tidak ada baris baru pada tabel sekolah);
+      // pendaftar diarahkan ke WhatsApp Admin aplikasi.
+      $waHref = pendaftaran_bantuan_tautan($form['nama'], $form['kepala_sekolah'], $terblokir);
+      $ditolak = ($terblokir['verifikasi'] ?? '') === 'ditolak';
+      $cocokKepala = ($terblokir['cocok'] ?? '') === 'kepala';
+      ?>
+      <div class="card" id="cardNonaktif">
+        <div class="card-head">
+          <div>
+            <h2>Pendaftaran Tidak Dapat Diproses</h2>
+            <p>Data yang Anda isi <b>terdeteksi pernah mendaftar</b> dan statusnya
+              <b>dinonaktifkan Admin</b>.</p>
+          </div>
+          <span class="chip" id="chipNonaktif">Dinonaktifkan</span>
+        </div>
+
+        <div class="alert alert-err" id="pesanNonaktif" style="margin:0">
+          <?= ikon('alert', 16) ?>
+          <span>
+            <?php if ($cocokKepala): ?>
+              Nama <b>kepala sekolah/madrasah</b> yang Anda isi (<b><?= e($form['kepala_sekolah']) ?></b>)
+              sama dengan data <b><?= e($terblokir['nama']) ?></b> yang sudah pernah mendaftar.
+            <?php else: ?>
+              Nama <b>sekolah/madrasah</b> yang Anda isi (<b><?= e($form['nama']) ?></b>) sama dengan
+              data lembaga yang sudah pernah mendaftar.
+            <?php endif; ?>
+            Lembaga tersebut sekarang <b>dinonaktifkan Admin</b>, sehingga pendaftaran ulang
+            <b>tidak dapat diproses otomatis</b>.
+            <?php if ($ditolak && trim((string) $terblokir['alasan']) !== ''): ?>
+              <br>Pendaftaran sebelumnya <b>ditolak Admin</b> dengan alasan:
+              <b><?= e($terblokir['alasan']) ?></b>.
+            <?php elseif ($ditolak): ?>
+              <br>Pendaftaran sebelumnya <b>ditolak Admin</b>.
+            <?php endif; ?>
+          </span>
+        </div>
+
+        <div class="blokir-data">
+          <div><span>Nama sekolah/madrasah yang Anda isi</span><b><?= e($form['nama']) ?></b></div>
+          <div><span>Nama kepala sekolah/madrasah yang Anda isi</span><b><?= e($form['kepala_sekolah'] !== '' ? $form['kepala_sekolah'] : '-') ?></b></div>
+          <div><span>Data yang terdeteksi pernah mendaftar</span><b><?= e($terblokir['nama']) ?></b></div>
+          <div><span>Status lembaga tersebut</span><b><?= $ditolak ? 'Pendaftaran ditolak Admin' : 'Dinonaktifkan Admin' ?></b></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 style="margin:0 0 6px">Minta bantuan Admin aplikasi</h3>
+        <p class="sm" style="margin:0">
+          Silakan hubungi <b>Admin aplikasi</b> lewat WhatsApp agar lembaga Anda dapat
+          diaktifkan kembali. Tombol di bawah langsung membuka WhatsApp dengan pesan yang sudah
+          disiapkan — cukup tekan <b>Kirim</b>. Nomor Admin aplikasi:
+        </p>
+        <div class="blokir-nomor" id="nomorNonaktif"><?= ikon('whatsapp', 16) ?> <?= e(AKTIVASI_WA_ADMIN) ?></div>
+
+        <div class="blokir-aksi">
+          <a class="blokir-wa" id="btnWaNonaktif" href="<?= e($waHref) ?>" target="_blank" rel="noopener noreferrer">
+            <?= ikon('whatsapp', 17) ?> Hubungi Admin lewat WhatsApp
+          </a>
+          <a class="btn btn-ghost" href="daftar.php"><?= ikon('edit', 16) ?> Ulangi Isi Formulir</a>
+          <a class="btn btn-ghost" href="login.php"><?= ikon('key', 16) ?> Ke Halaman Masuk</a>
+        </div>
+
+        <div class="alert alert-warn" style="margin:16px 0 0">
+          <?= ikon('eye', 16) ?>
+          <span>Data sekolah/madrasah yang sudah ada <b>tidak dihapus</b> dan tidak berubah. Setelah
+            Admin aplikasi mengaktifkan kembali, Anda dapat memakai akun yang sama seperti
+            sebelumnya.</span>
+        </div>
       </div>
     <?php else: ?>
       <?php if ($sudahMasuk): ?>

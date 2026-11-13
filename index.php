@@ -140,89 +140,6 @@ if ($u['role'] === 'pengawas') {
         </div>
       </div>
     <?php else: ?>
-      <div class="card">
-        <div class="card-head">
-          <div>
-            <h2>Daftar <?= e($istilahBinaan) ?> Binaan</h2>
-            <p>Klik <b>Lihat Rekap</b> untuk rekapan supervisi, <b>Komentar</b> untuk memberi komentar
-              tindak lanjut (terkirim ke kepala sekolah/madrasah), <b>Jadwal</b> untuk jadwal supervisi,
-              atau <b>Unduh CSV</b> untuk menyimpan rekapan.</p>
-          </div>
-          <span class="chip"><?= count($binaan) ?> <?= e(strtolower($istilahBinaan)) ?></span>
-        </div>
-        <div class="table-wrap">
-          <table class="tbl">
-            <thead>
-              <tr>
-                <th>Sekolah</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th>
-                <th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th>
-                <th style="width:150px">Progres Dokumen</th>
-                <th>Supervisi terakhir</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($binaan as $s): $st = $statPer[(int) $s['id']]; $rata = $st['rata']; $pred = $rata > 0 ? predikat_dari($rata, $s) : null; ?>
-              <tr>
-                <td>
-                  <b><?= e((string) $s['nama']) ?></b>
-                  <span class="tbl-sub">NPSN <?= e((string) ($s['npsn'] ?: '-')) ?> &middot; <?= e((string) ($s['kepala_sekolah'] ?: '-')) ?><?= (int) $s['aktif'] === 0 ? ' &middot; nonaktif' : '' ?></span>
-                  <?php if (isset($komentarSayaPerBinaan[(int) $s['id']])): ?>
-                    <span class="tbl-sub"><span class="pill pill-ok">sudah dikomentari</span>
-                      <?= e(waktu_id_polos($komentarSayaPerBinaan[(int) $s['id']])) ?></span>
-                  <?php endif; ?>
-                  <?php if (isset($dokumenPerBinaan[(int) $s['id']])): ?>
-                    <span class="tbl-sub"><a href="dokumen_madrasah.php?madrasah=<?= (int) $s['id'] ?>"><?= ikon('doc', 12) ?>
-                      <?= (int) $dokumenPerBinaan[(int) $s['id']]['jumlah'] ?> dokumen madrasah</a></span>
-                  <?php endif; ?>
-                </td>
-                <td class="ctr"><?= (int) $st['guru'] ?></td>
-                <td class="ctr"><?= (int) $st['supervisi'] ?><?php if ($st['draft'] > 0): ?><span class="tbl-sub">+<?= (int) $st['draft'] ?> draf</span><?php endif; ?></td>
-                <td>
-                  <?php if ($rata > 0): ?>
-                    <b><?= r1($rata) ?></b>
-                    <div class="bar-mini mt8"><i class="lv<?= e($pred) ?>" style="width:<?= min(100, $rata) ?>%"></i></div>
-                  <?php else: ?><span class="mut xs">belum ada</span><?php endif; ?>
-                </td>
-                <td class="ctr"><?= $pred ? '<span class="pill pill-' . e($pred) . '">' . e($pred) . '</span>' : '<span class="mut xs">—</span>' ?></td>
-                <td class="ctr"><?= (int) $st['cakupan'] ?>%<span class="tbl-sub"><?= (int) $st['guru_dinilai'] ?>/<?= (int) $st['guru'] ?></span></td>
-                <td>
-                  <?php $pb = $progressBinaan[(int) $s['id']]['progress'] ?? null; ?>
-                  <?php if ($pb && (int) $pb['total'] > 0): ?>
-                    <b class="xs"><?= (int) $pb['persen'] ?>%</b>
-                    <div class="progress-track sm"><i style="width:<?= (int) $pb['persen'] ?>%"></i></div>
-                    <span class="tbl-sub"><?= (int) $pb['terkirim'] ?>/<?= (int) $pb['total'] ?> nama dokumen</span>
-                  <?php else: ?>
-                    <span class="mut xs">belum ada daftar nama dokumen</span>
-                  <?php endif; ?>
-                </td>
-                <td class="xs mut">
-                  <?= $st['terakhir'] ? e(tanggal_id((string) $st['terakhir'])) : 'belum ada' ?>
-                  <span class="tbl-sub"><?= (int) $st['jadwal'] ?> baris jadwal</span>
-                </td>
-                <td>
-                  <div class="row-actions">
-                    <form method="post">
-                      <?= csrf_field() ?>
-                      <input type="hidden" name="aksi" value="masuk"><input type="hidden" name="sekolah" value="<?= (int) $s['id'] ?>">
-                      <button class="btn btn-primary btn-sm" type="submit" <?= (int) $s['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('report', 14) ?> Lihat Rekap</button>
-                    </form>
-                    <a class="btn btn-ghost btn-sm <?= isset($komentarSayaPerBinaan[(int) $s['id']]) ? 'btn-ok' : '' ?>"
-                       href="laporan.php?sekolah=<?= (int) $s['id'] ?>#cardKomentar"
-                       title="<?= isset($komentarSayaPerBinaan[(int) $s['id']])
-                         ? 'Anda sudah memberi komentar — klik untuk memperbarui'
-                         : 'Beri komentar/tindak lanjut untuk sekolah ini' ?>"><?= ikon('message', 14) ?> Komentar</a>
-                    <a class="btn btn-ghost btn-sm" href="jadwal.php?sekolah=<?= (int) $s['id'] ?>" title="Lihat jadwal supervisi <?= e(istilah_sekolah('Sekolah')) ?> ini"><?= ikon('calendar', 14) ?> Jadwal</a>
-                    <a class="btn btn-ghost btn-sm" href="laporan_export.php?sekolah=<?= (int) $s['id'] ?>" title="Unduh rekapan supervisi sekolah ini (CSV)"><?= ikon('doc', 14) ?> Unduh CSV</a>
-                    <a class="btn btn-ghost btn-sm" href="laporan.php?sekolah=<?= (int) $s['id'] ?>" title="Buka rekapan di tab ini"><?= ikon('eye', 14) ?></a>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <div class="grid g21">
         <div class="card">
           <div class="card-head"><div><h2>Perbandingan Nilai antar <?= e($istilahBinaan) ?> Binaan</h2><p>Rata-rata hasil supervisi final (skala 0-100).</p></div></div>
@@ -287,6 +204,100 @@ if ($u['role'] === 'pengawas') {
             benar-benar dikirim madrasah itu.</p>
         </div>
       <?php endif; ?>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Daftar <?= e($istilahBinaan) ?> Binaan</h2>
+            <p>Klik <b>Lihat Rekap</b> untuk rekapan supervisi, <b>Komentar</b> untuk memberi komentar
+              tindak lanjut (terkirim ke kepala sekolah/madrasah), <b>Jadwal</b> untuk jadwal supervisi,
+              atau <b>Unduh CSV</b> untuk menyimpan rekapan.</p>
+          </div>
+          <span class="chip"><?= count($binaan) ?> <?= e(strtolower($istilahBinaan)) ?></span>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Sekolah</th><th style="width:132px">Masa Aktif</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th>
+                <th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th>
+                <th style="width:150px">Progres Dokumen</th>
+                <th>Supervisi terakhir</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($binaan as $s): $st = $statPer[(int) $s['id']]; $rata = $st['rata']; $pred = $rata > 0 ? predikat_dari($rata, $s) : null; ?>
+              <tr>
+                <td>
+                  <b><?= e((string) $s['nama']) ?></b>
+                  <span class="tbl-sub">NPSN <?= e((string) ($s['npsn'] ?: '-')) ?> &middot; <?= e((string) ($s['kepala_sekolah'] ?: '-')) ?><?= (int) $s['aktif'] === 0 ? ' &middot; nonaktif' : '' ?></span>
+                  <?php if (isset($komentarSayaPerBinaan[(int) $s['id']])): ?>
+                    <span class="tbl-sub"><span class="pill pill-ok">sudah dikomentari</span>
+                      <?= e(waktu_id_polos($komentarSayaPerBinaan[(int) $s['id']])) ?></span>
+                  <?php endif; ?>
+                  <?php if (isset($dokumenPerBinaan[(int) $s['id']])): ?>
+                    <span class="tbl-sub"><a href="dokumen_madrasah.php?madrasah=<?= (int) $s['id'] ?>"><?= ikon('doc', 12) ?>
+                      <?= (int) $dokumenPerBinaan[(int) $s['id']]['jumlah'] ?> dokumen madrasah</a></span>
+                  <?php endif; ?>
+                </td>
+                <?php
+                // MASA AKTIF APLIKASI tiap binaan (permintaan pemilik): pengawas perlu tahu masa aktif
+                // sekolah/madrasah binaannya masing-masing — masih aktif, masa uji coba, atau sudah habis
+                // sehingga aplikasinya terkunci. Datanya dari aktivasi_masa_aktif() (satu sumber dengan
+                // tabel Peringkat Sekolah di dasbor Super Admin) — jangan menghitung sisa hari di sini.
+                $ma = aktivasi_masa_aktif($s);
+                ?>
+                <td class="xs" id="masaAktif<?= (int) $s['id'] ?>">
+                  <span class="pill <?= e($ma['kelas']) ?>"<?= $ma['tanggal'] !== '' ? ' title="Berakhir ' . e($ma['tanggal']) . '"' : '' ?>><?= e($ma['label']) ?></span>
+                  <span class="tbl-sub"><?= e($ma['ket']) ?></span>
+                </td>
+                <td class="ctr"><?= (int) $st['guru'] ?></td>
+                <td class="ctr"><?= (int) $st['supervisi'] ?><?php if ($st['draft'] > 0): ?><span class="tbl-sub">+<?= (int) $st['draft'] ?> draf</span><?php endif; ?></td>
+                <td>
+                  <?php if ($rata > 0): ?>
+                    <b><?= r1($rata) ?></b>
+                    <div class="bar-mini mt8"><i class="lv<?= e($pred) ?>" style="width:<?= min(100, $rata) ?>%"></i></div>
+                  <?php else: ?><span class="mut xs">belum ada</span><?php endif; ?>
+                </td>
+                <td class="ctr"><?= $pred ? '<span class="pill pill-' . e($pred) . '">' . e($pred) . '</span>' : '<span class="mut xs">—</span>' ?></td>
+                <td class="ctr"><?= (int) $st['cakupan'] ?>%<span class="tbl-sub"><?= (int) $st['guru_dinilai'] ?>/<?= (int) $st['guru'] ?></span></td>
+                <td>
+                  <?php $pb = $progressBinaan[(int) $s['id']]['progress'] ?? null; ?>
+                  <?php if ($pb && (int) $pb['total'] > 0): ?>
+                    <b class="xs"><?= (int) $pb['persen'] ?>%</b>
+                    <div class="progress-track sm"><i style="width:<?= (int) $pb['persen'] ?>%"></i></div>
+                    <span class="tbl-sub"><?= (int) $pb['terkirim'] ?>/<?= (int) $pb['total'] ?> nama dokumen</span>
+                  <?php else: ?>
+                    <span class="mut xs">belum ada daftar nama dokumen</span>
+                  <?php endif; ?>
+                </td>
+                <td class="xs mut">
+                  <?= $st['terakhir'] ? e(tanggal_id((string) $st['terakhir'])) : 'belum ada' ?>
+                  <span class="tbl-sub"><?= (int) $st['jadwal'] ?> baris jadwal</span>
+                </td>
+                <td>
+                  <div class="row-actions">
+                    <form method="post">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="aksi" value="masuk"><input type="hidden" name="sekolah" value="<?= (int) $s['id'] ?>">
+                      <button class="btn btn-primary btn-sm" type="submit" <?= (int) $s['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('report', 14) ?> Lihat Rekap</button>
+                    </form>
+                    <a class="btn btn-ghost btn-sm <?= isset($komentarSayaPerBinaan[(int) $s['id']]) ? 'btn-ok' : '' ?>"
+                       href="laporan.php?sekolah=<?= (int) $s['id'] ?>#cardKomentar"
+                       title="<?= isset($komentarSayaPerBinaan[(int) $s['id']])
+                         ? 'Anda sudah memberi komentar — klik untuk memperbarui'
+                         : 'Beri komentar/tindak lanjut untuk sekolah ini' ?>"><?= ikon('message', 14) ?> Komentar</a>
+                    <a class="btn btn-ghost btn-sm" href="jadwal.php?sekolah=<?= (int) $s['id'] ?>" title="Lihat jadwal supervisi <?= e(istilah_sekolah('Sekolah')) ?> ini"><?= ikon('calendar', 14) ?> Jadwal</a>
+                    <a class="btn btn-ghost btn-sm" href="laporan_export.php?sekolah=<?= (int) $s['id'] ?>" title="Unduh rekapan supervisi sekolah ini (CSV)"><?= ikon('doc', 14) ?> Unduh CSV</a>
+                    <a class="btn btn-ghost btn-sm" href="laporan.php?sekolah=<?= (int) $s['id'] ?>" title="Buka rekapan di tab ini"><?= ikon('eye', 14) ?></a>
+                  </div>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
     <?php endif; ?>
 
@@ -387,6 +398,10 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
         FROM supervisi v JOIN sekolah s ON s.id = v.sekolah_id JOIN guru g ON g.id = v.guru_id JOIN instrumen i ON i.id = v.instrumen_id
         ORDER BY v.tanggal DESC, v.id DESC LIMIT 10');
 
+    // Tabel "Peringkat Sekolah" (beserta lembar cetak & unduhan Word-nya) memakai SATU sumber data:
+    // peringkat_sekolah() — sudah terurut menurut masa aktif, lengkap dengan totalnya.
+    $pk = peringkat_sekolah($rows);
+
     page_top('Ringkasan Semua Sekolah', 'index');
 
     // Sekilas siapa yang sedang memakai aplikasi (rinciannya di halaman Log Aktivitas).
@@ -470,36 +485,60 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
     <div class="card">
       <div class="card-head">
         <div><h2>Peringkat Sekolah</h2><p>Diurutkan dari masa aktif paling lama (paling atas), lalu nama sekolah.</p></div>
-        <a class="btn btn-primary btn-sm" href="sekolah.php"><?= ikon('building', 15) ?> Kelola Sekolah</a>
-      </div>
-      <?php if ($rows): ?>
         <?php
-        // URUTAN (permintaan pemilik): sekolah dengan MASA AKTIF paling banyak di paling atas.
-        // Sisa waktu dibandingkan dalam detik (lihat aktivasi_urut_kunci()); sekolah yang masa
-        // aktifnya sudah habis / belum diaktivasi turun ke bawah. Bila sisa waktunya sama,
-        // diurutkan menurut nama sekolah supaya urutannya tetap.
-        usort($rows, function ($a, $b) {
-            $ka = aktivasi_urut_kunci($a);
-            $kb = aktivasi_urut_kunci($b);
-            if ($ka !== $kb) {
-                return $kb <=> $ka;
-            }
-            return strcasecmp((string) ($a['nama'] ?? ''), (string) ($b['nama'] ?? ''));
-        });
+        // CARI NAMA SEKOLAH (permintaan pemilik): kotak cari di antara judul kartu dan tombol aksi
+        // untuk mempercepat pencarian lembaga pada daftar yang panjang. Penyaringan berjalan
+        // SAAT DIKETIK (tanpa memuat ulang halaman) lewat initCariSekolah() di assets/app.js —
+        // nomor baris ikut dirapikan dan jumlah hasil ditampilkan. Tanpa JavaScript tabel tetap
+        // tampil utuh (kotak cari hanya pelengkap, tidak pernah menyembunyikan data secara permanen).
         ?>
+        <div class="cari-sekolah">
+          <span class="cari-ikon" aria-hidden="true"><?= ikon('search', 15) ?></span>
+          <input type="search" id="cariSekolah" autocomplete="off"
+                 placeholder="Cari nama sekolah / NPSN / kepala…"
+                 aria-label="Cari nama sekolah pada daftar peringkat"
+                 aria-controls="tblPeringkat" data-target="tblPeringkat">
+          <button type="button" id="cariSekolahBersih" class="cari-bersih" hidden
+                  aria-label="Hapus kata kunci pencarian" title="Hapus kata kunci"><?= ikon('close', 13) ?></button>
+        </div>
+        <?php
+        // CETAK & UNDUH WORD (permintaan pemilik, v1.27.0): dua tombol di samping "Kelola Sekolah".
+        // Keduanya membaca peringkat_sekolah() — sumber data yang sama dengan tabel di bawah,
+        // jadi angka pada lembar cetak/Word tidak mungkin berbeda dari dasbor.
+        ?>
+        <div class="flex" style="gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <a class="btn btn-ghost btn-sm" href="cetak_peringkat.php" target="_blank" rel="noopener"
+             title="Cetak / simpan PDF daftar peringkat sekolah"><?= ikon('print', 15) ?> Cetak</a>
+          <a class="btn btn-ghost btn-sm" href="peringkat_docx.php"
+             title="Unduh daftar peringkat sekolah sebagai berkas Word (.docx)"><?= ikon('doc', 15) ?> Unduh Word</a>
+          <a class="btn btn-primary btn-sm" href="sekolah.php"><?= ikon('building', 15) ?> Kelola Sekolah</a>
+        </div>
+      </div>
+      <?php if ($pk['baris']): ?>
+        <div class="cari-info" id="cariInfo" hidden>
+          <span id="cariJumlah"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="cariTampilSemua">Tampilkan semua</button>
+        </div>
         <div class="table-wrap">
-          <table class="tbl">
+          <table class="tbl" id="tblPeringkat">
             <thead><tr><th style="width:44px">#</th><th>Sekolah</th><th style="width:150px">Masa Aktif</th><th class="ctr">Guru</th><th class="ctr">Supervisi</th><th style="width:150px">Rata-rata</th><th class="ctr">Predikat</th><th class="ctr">Cakupan</th><th></th></tr></thead>
             <tbody>
-            <?php foreach ($rows as $ix => $r):
-                $rata = $r['rata'] !== null ? (float) $r['rata'] : null;
-                $cakupan = (int) $r['guru'] > 0 ? (int) round((int) $r['guru_dinilai'] / (int) $r['guru'] * 100) : 0;
+            <?php foreach ($pk['baris'] as $ix => $r):
+                $rata = $r['rata_nilai'];
+                $cakupan = (int) $r['cakupan'];
                 // MASA AKTIF (permintaan pemilik): masa aktif 1 tahun / masa uji coba 15 hari /
                 // keadaan sudah habis — supaya Super Admin langsung melihat mana yang perlu diaktivasi.
-                $ma = aktivasi_masa_aktif($r);
+                $ma = $r['masa'];
                 ?>
               <tr>
                 <td><b><?= $ix + 1 ?></b></td>
+                <?php
+                // CATATAN untuk fitur cari (v1.31.1): teks yang dicari diambil dari SEL INI
+                // (kolom ke-2 = nama sekolah + baris kecil NPSN/kepala sekolah) oleh
+                // `initCariSekolah()` di assets/app.js. Jadi TIDAK perlu penanda tambahan pada
+                // markup (dan tag <tr>/<td> sengaja dibiarkan apa adanya supaya pembaca/uji lain
+                // yang memecah tabel berdasarkan tag itu tidak terganggu).
+                ?>
                 <td>
                   <b><?= e((string) $r['nama']) ?></b>
                   <span class="tbl-sub">NPSN <?= e((string) ($r['npsn'] ?: '-')) ?> &middot; <?= e((string) ($r['kepala_sekolah'] ?: '-')) ?><?= (int) $r['aktif'] === 0 ? ' &middot; nonaktif' : '' ?></span>
@@ -513,10 +552,10 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
                 <td>
                   <?php if ($rata !== null): ?>
                     <b><?= r1($rata) ?></b>
-                    <div class="bar-mini mt8"><i class="lv<?= e(predikat_dari($rata)) ?>" style="width:<?= min(100, $rata) ?>%"></i></div>
+                    <div class="bar-mini mt8"><i class="lv<?= e($r['predikat']) ?>" style="width:<?= min(100, $rata) ?>%"></i></div>
                   <?php else: ?><span class="mut xs">belum ada</span><?php endif; ?>
                 </td>
-                <td class="ctr"><?= $rata !== null ? '<span class="pill pill-' . e(predikat_dari($rata)) . '">' . e(predikat_dari($rata)) . '</span>' : '<span class="mut xs">—</span>' ?></td>
+                <td class="ctr"><?= $rata !== null ? '<span class="pill pill-' . e($r['predikat']) . '">' . e($r['predikat']) . '</span>' : '<span class="mut xs">—</span>' ?></td>
                 <td class="ctr"><?= $cakupan ?>%<span class="tbl-sub"><?= (int) $r['guru_dinilai'] ?>/<?= (int) $r['guru'] ?></span></td>
                 <td class="right">
                   <?php
@@ -542,6 +581,12 @@ if ($super && (!$sekolah || isset($_GET['semua']))) {
                 </td>
               </tr>
             <?php endforeach; ?>
+            <?php // Baris keadaan kosong saat pencarian tidak menemukan sekolah (dipakai initCariSekolah()). ?>
+            <tr id="cariKosong" hidden>
+              <td colspan="9">
+                <div class="cari-kosong" id="cariKosongTeks">Tidak ada sekolah/madrasah yang cocok dengan kata kunci itu.</div>
+              </td>
+            </tr>
             </tbody>
           </table>
         </div>

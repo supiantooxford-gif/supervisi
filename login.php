@@ -23,6 +23,9 @@
  */
 declare(strict_types=1);
 require_once __DIR__ . '/inc/init.php';
+// Gambar halaman depan DILINDUNGI (v1.32.0): alamat CDN foto tidak pernah dicetak ke HTML, semua
+// gambar memakai `gambar_tag()` → `gambar.php?j=…&v=…` (lihat inc/gambar.php).
+require_once __DIR__ . '/inc/gambar.php';
 
 if (current_user()) {
     redirect('index.php');
@@ -238,11 +241,15 @@ $menuLanding = [
           <div class="lp-slider" id="lpSlider" data-otomatis="6000">
             <div class="lp-slider-track">
               <?php foreach ($slider as $i => $sl): ?>
-                <?php $gambar = landing_slider_gambar($sl); ?>
+                <?php
+                $gambar = landing_slider_gambar($sl);
+                $altGambar = trim((string) $sl['judul']) !== '' ? (string) $sl['judul'] : 'Gambar slider ' . ($i + 1);
+                $tagGambar = $gambar !== '' ? gambar_tag('slider', $gambar, $altGambar, (int) $sl['id'], 0, '', $i !== 0) : '';
+                ?>
                 <figure class="lp-slide">
-                  <div class="lp-slide-gambar">
-                    <?php if ($gambar !== ''): ?>
-                      <img src="<?= e($gambar) ?>" alt="<?= e(trim((string) $sl['judul']) !== '' ? (string) $sl['judul'] : 'Gambar slider ' . ($i + 1)) ?>"<?= $i === 0 ? '' : ' loading="lazy"' ?>>
+                  <div class="lp-slide-gambar" data-lindung-wadah="1">
+                    <?php if ($tagGambar !== ''): ?>
+                      <?= $tagGambar ?>
                     <?php else: ?>
                       <span class="lp-slide-kosong">
                         <?= ikon('school', 46) ?>
@@ -405,10 +412,13 @@ $menuLanding = [
                 <?php if (trim((string) $t['isi']) !== ''): ?>
                   <blockquote><?= nl2br(e((string) $t['isi'])) ?></blockquote>
                 <?php endif; ?>
-                <figcaption class="lp-testi-sumber">
-                  <?php $foto = trim((string) ($t['foto'] ?? '')); ?>
-                  <?php if ($foto !== ''): ?>
-                    <img class="lp-testi-foto" src="<?= e($foto) ?>" alt="Foto <?= e((string) $t['nama']) ?>">
+                <figcaption class="lp-testi-sumber" data-lindung-wadah="1">
+                  <?php
+                  $foto = trim((string) ($t['foto'] ?? ''));
+                  $tagFoto = $foto !== '' ? gambar_tag('testimoni', $foto, 'Foto ' . (string) $t['nama'], (int) $t['id'], 0, 'lp-testi-foto') : '';
+                  ?>
+                  <?php if ($tagFoto !== ''): ?>
+                    <?= $tagFoto ?>
                   <?php else: ?>
                     <span class="lp-testi-foto lp-testi-inisial"><?= e(strtoupper(substr(trim((string) $t['nama']), 0, 1))) ?></span>
                   <?php endif; ?>
@@ -450,9 +460,14 @@ $menuLanding = [
                     <?php $sl = $tentang['slot'][$n]; ?>
                     <?php if ($sl['foto'] === '' && $sl['nama'] === '') { continue; } ?>
                     <figure class="tentang-slot">
-                      <div class="tentang-bingkai">
-                        <?php if ($sl['foto'] !== ''): ?>
-                          <img src="<?= e($sl['foto']) ?>" alt="<?= e($sl['nama'] !== '' ? $sl['nama'] : 'Foto ' . $n) ?>" loading="lazy">
+                      <div class="tentang-bingkai" data-lindung-wadah="1">
+                        <?php
+                        $tagFoto = $sl['foto'] !== ''
+                            ? gambar_tag('tentang', $sl['foto'], $sl['nama'] !== '' ? $sl['nama'] : 'Foto ' . $n, 0, (int) $n, '', true)
+                            : '';
+                        ?>
+                        <?php if ($tagFoto !== ''): ?>
+                          <?= $tagFoto ?>
                         <?php else: ?>
                           <span class="tentang-kosong"><?= ikon('user', 26) ?></span>
                         <?php endif; ?>

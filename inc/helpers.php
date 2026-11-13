@@ -1010,6 +1010,340 @@ function pengawas_punya(int $userId, int $sekolahId): bool
     return (int) val('SELECT COUNT(*) FROM pengawas_sekolah WHERE user_id = ? AND sekolah_id = ?', [$userId, $sekolahId], 0) > 0;
 }
 
+// ============================================ SATU SEKOLAH = SATU PENGAWAS (permintaan pemilik, v1.28.0)
+// Permintaan pemilik: *"Buat yang nama pengawas sama jadikan satu sekolah binaannya. Dan pastikan
+// sekolah atau madrasah yang sudah ada pengawas bina tidak bisa dimasukkan ke pengawas yang lain."*
+//
+// Dua aturan yang dijaga di sini:
+//   1. AKUN BERNAMA SAMA = SATU ORANG. Akun pengawas ganda (nama sama, nama pengguna berbeda —
+//      biasanya muncul dari halaman pendaftaran sekolah) digabung menjadi SATU akun: seluruh
+//      sekolah binaan + komentar pengawasnya dipindahkan ke akun TERTUA (id terkecil), lalu akun
+//      gandanya dihapus. Lihat pengawas_gabung_nama_sama().
+//   2. SATU SEKOLAH HANYA DIBINA SATU PENGAWAS. Sekolah yang sudah menjadi binaan seorang pengawas
+//      TIDAK bisa dicentang untuk pengawas lain. Ditegakkan di SERVER (pengawas_binaan_simpan())
+//      ditambah kotak centangnya dinonaktifkan pada tampilan (pengawas_binaan_peta()).
+
+/**
+ * Kunci pembanding NAMA (lembaga maupun orang): huruf kecil, hanya huruf & angka.
+ * Dipakai supaya "MA. Sirojuth Tholibiin, Mootilango" dianggap SAMA dengan
+ * "ma sirojuth tholibiin mootilango" (perbedaan huruf besar/kecil, spasi, titik, dan tanda baca
+ * lain diabaikan). Dipakai juga oleh pengawas_nama_kunci() dan pendaftaran_sekolah_nonaktif().
+ */
+function nama_kunci_pembanding(string $nama): string
+{
+    $nama = trim($nama);
+    if ($nama === '') {
+        return '';
+    }
+    $nama = function_exists('mb_strtolower') ? mb_strtolower($nama, 'UTF-8') : strtolower($nama);
+    return (string) preg_replace('/[^a-z0-9]+/u', '', $nama);
+}
+
+/**
+ * Kunci pembanding NAMA pengawas: huruf kecil, hanya huruf/angka.
+ * Dipakai supaya "Iqdar Najmi S. Abdul, SE, M.Pd" dianggap SAMA dengan
+ * "IQDAR NAJMI S.ABDUL SE M.Pd" (perbedaan spasi, titik, dan koma diabaikan).
+ */
+function pengawas_nama_kunci(string $nama): string
+{
+    return nama_kunci_pembanding($nama);
+}
+
+/**
+ * Pengawas LAIN yang membina sebuah sekolah (null bila belum ada).
+ *
+ * @return array{id:int,nama:string,username:string,aktif:int}|null
+ */
+function pengawas_binaan_oleh(int $sekolahId, int $kecualiUserId = 0): ?array
+{
+    if ($sekolahId <= 0) {
+        return null;
+    }
+    $r = one("SELECT u.id, u.nama, u.username, u.aktif
+              FROM pengawas_sekolah ps JOIN users u ON u.id = ps.user_id
+              WHERE ps.sekolah_id = ? AND ps.user_id <> ? AND u.role = 'pengawas'
+              ORDER BY u.aktif DESC, u.id LIMIT 1", [$sekolahId, $kecualiUserId]);
+    return $r ?: null;
+}
+
+/**
+ * Peta sekolah → pengawas pemiliknya (SELAIN $kecualiUserId).
+ * Dipakai halaman Akun Pengawas untuk menonaktifkan kotak centang yang sudah dimiliki pengawas lain.
+ *
+ * @return array<int,array{id:int,nama:string,username:string,aktif:int}>
+ */
+function pengawas_binaan_peta(int $kecualiUserId = 0): array
+{
+    $peta = [];
+    foreach (all("SELECT ps.sekolah_id, u.id, u.nama, u.username, u.aktif
+                  FROM pengawas_sekolah ps JOIN users u ON u.id = ps.user_id
+                  WHERE ps.user_id <> ? AND u.role = 'pengawas'
+                  ORDER BY u.aktif DESC, u.id", [$kecualiUserId]) as $r) {
+        $sid = (int) $r['sekolah_id'];
+        if (!isset($peta[$sid])) {
+            $peta[$sid] = [
+                'id'       => (int) $r['id'],
+                'nama'     => (string) $r['nama'],
+                'username' => (string) $r['username'],
+                'aktif'    => (int) $r['aktif'],
+            ];
+        }
+    }
+    return $peta;
+}
+
+/**
+ * Sekolah yang MASIH dibina lebih dari satu pengawas (data lama sebelum aturan ini berlaku).
+ * Tidak dihapus otomatis — halaman Akun Pengawas menampilkan peringatan agar Super Admin merapikan.
+ *
+ * @return array<int,array{id:int,nama:string,pengawas:array<int,string>}>
+ */
+function pengawas_binaan_ganda(): array
+{
+    $hasil = [];
+    // 🚨 JANGAN memberi alias kolom bernama `pengawas` pada query ini dan JANGAN memakai kutip
+    // ganda untuk nilai teks: SQLite membaca `"pengawas"` sebagai NAMA KOLOM bila ada kolom/alias
+    // bernama itu, sehingga `u.role = "pengawas"` menjadi perbandingan `u.role = u.nama` dan
+    // hasilnya SELALU kosong (pernah terjadi saat fitur ini dibuat). Pakai kutip tunggal.
+    foreach (all("SELECT ps.sekolah_id, s.nama, u.nama AS nama_pengawas
+                  FROM pengawas_sekolah ps
+                  JOIN sekolah s ON s.id = ps.sekolah_id
+                  JOIN users u ON u.id = ps.user_id
+                  WHERE u.role = 'pengawas'
+                  ORDER BY s.nama, u.nama", []) as $r) {
+        $sid = (int) $r['sekolah_id'];
+        if (!isset($hasil[$sid])) {
+            $hasil[$sid] = ['id' => $sid, 'nama' => (string) $r['nama'], 'pengawas' => []];
+        }
+        if (!in_array((string) $r['nama_pengawas'], $hasil[$sid]['pengawas'], true)) {
+            $hasil[$sid]['pengawas'][] = (string) $r['nama_pengawas'];
+        }
+    }
+    return array_values(array_filter($hasil, static fn(array $s): bool => count($s['pengawas']) > 1));
+}
+
+/**
+ * Akun pengawas yang NAMANYA SAMA (dinormalkan) dengan $nama — dipakai mencegah satu orang punya
+ * beberapa akun (permintaan pemilik). $kecualiId = akun yang sedang diubah (jangan dianggap kembar).
+ *
+ * @return array{id:int,nama:string,username:string}|null
+ */
+function pengawas_akun_nama_sama(string $nama, int $kecualiId = 0): ?array
+{
+    $kunci = pengawas_nama_kunci($nama);
+    if ($kunci === '') {
+        return null;
+    }
+    foreach (all("SELECT id, nama, username FROM users WHERE role = 'pengawas' ORDER BY id", []) as $r) {
+        if ((int) $r['id'] === $kecualiId) {
+            continue;
+        }
+        if (pengawas_nama_kunci((string) $r['nama']) === $kunci) {
+            return ['id' => (int) $r['id'], 'nama' => (string) $r['nama'], 'username' => (string) $r['username']];
+        }
+    }
+    return null;
+}
+
+/**
+ * Simpan daftar sekolah binaan seorang pengawas — DENGAN aturan "satu sekolah hanya satu pengawas".
+ *
+ * Sekolah yang sudah menjadi binaan pengawas LAIN dilewati (tidak disimpan, tidak berpindah) dan
+ * dilaporkan pada kunci `ditolak` supaya halaman bisa memberi tahu Super Admin. Sebelumnya fungsi
+ * ini menerima semua centang apa adanya sehingga satu sekolah bisa dibina beberapa pengawas.
+ *
+ * @param array<int,mixed> $sekolahIds centang dari formulir (`sekolah[]`).
+ * @return array{jumlah:int,ditolak:array<int,string>,dilepas:array<int,string>}
+ */
+function pengawas_binaan_simpan(int $userId, array $sekolahIds): array
+{
+    $bersih = [];
+    foreach ($sekolahIds as $sid) {
+        $sid = (int) $sid;
+        if ($sid > 0 && one('SELECT id FROM sekolah WHERE id = ? AND verifikasi = "disetujui" AND aktif = 1', [$sid])) {
+            $bersih[$sid] = true;
+        }
+    }
+
+    // Buang sekolah yang sudah dibina pengawas LAIN (aturan inti permintaan pemilik).
+    $ditolak = [];
+    foreach (array_keys($bersih) as $sid) {
+        $lain = pengawas_binaan_oleh((int) $sid, $userId);
+        if ($lain) {
+            unset($bersih[$sid]);
+            $nm = (string) val('SELECT nama FROM sekolah WHERE id = ?', [(int) $sid], '');
+            $ditolak[] = ($nm !== '' ? $nm : '#' . (int) $sid) . ' (sudah dibina ' . $lain['nama'] . ')';
+        }
+    }
+
+    $lama = array_map('intval', array_column(all('SELECT sekolah_id FROM pengawas_sekolah WHERE user_id = ?', [$userId]), 'sekolah_id'));
+    $tambah = array_diff(array_keys($bersih), $lama);
+    $hapus = array_diff($lama, array_keys($bersih));
+    $dilepas = [];
+    foreach ($hapus as $sid) {
+        $nm = (string) val('SELECT nama FROM sekolah WHERE id = ?', [(int) $sid], '');
+        $dilepas[] = $nm !== '' ? $nm : '#' . (int) $sid;
+    }
+
+    db()->exec('BEGIN IMMEDIATE');
+    try {
+        foreach ($tambah as $sid) {
+            q('INSERT OR IGNORE INTO pengawas_sekolah (user_id, sekolah_id, dibuat) VALUES (?, ?, ?)',
+                [$userId, (int) $sid, date('Y-m-d H:i:s')]);
+        }
+        foreach ($hapus as $sid) {
+            q('DELETE FROM pengawas_sekolah WHERE user_id = ? AND sekolah_id = ?', [$userId, (int) $sid]);
+        }
+        db()->exec('COMMIT');
+    } catch (Throwable $ex) {
+        db()->exec('ROLLBACK');
+        throw $ex;
+    }
+
+    return ['jumlah' => count($bersih), 'ditolak' => $ditolak, 'dilepas' => $dilepas];
+}
+
+/**
+ * Kelompokkan akun pengawas yang NAMANYA SAMA (lihat pengawas_nama_kunci()).
+ * Hanya kelompok berisi ≥ 2 akun yang dikembalikan.
+ *
+ * @return array<string,array{nama:string,akun:array<int,array<string,mixed>>}>
+ */
+function pengawas_duplikat_grup(): array
+{
+    $grup = [];
+    foreach (all("SELECT * FROM users WHERE role = 'pengawas' ORDER BY id", []) as $r) {
+        $k = pengawas_nama_kunci((string) ($r['nama'] ?? ''));
+        if ($k === '') {
+            continue;
+        }
+        if (!isset($grup[$k])) {
+            $grup[$k] = ['nama' => (string) $r['nama'], 'akun' => []];
+        }
+        $grup[$k]['akun'][] = $r;
+    }
+    return array_filter($grup, static fn(array $g): bool => count($g['akun']) > 1);
+}
+
+/**
+ * GABUNGKAN akun pengawas yang namanya sama menjadi SATU akun (permintaan pemilik).
+ *
+ * Akun yang DIPERTAHANKAN = yang paling tua (id terkecil) karena biasanya akun asli yang dibuat
+ * Super Admin. Yang dipindahkan ke akun itu:
+ *   - seluruh baris `pengawas_sekolah` (sekolah binaan) — duplikat diabaikan;
+ *   - baris `komentar_pengawas` (komentar pada rekapan madrasah); bila kedua akun sudah mengomentari
+ *     madrasah yang sama, yang dipertahankan adalah komentar yang paling akhir diubah;
+ *   - NIP: bila akun yang dipertahankan belum punya NIP sedangkan akun gandanya punya, NIP itu dipakai;
+ *   - status aktif: bila ada akun ganda yang aktif, akun yang dipertahankan ikut diaktifkan.
+ * Setelah itu akun GANDA DIHAPUS (relasi lain memakai ON DELETE SET NULL / CASCADE sehingga riwayat
+ * log & obrolan tetap terbaca dari snapshot-nya).
+ *
+ * @return array{akun_dihapus:int,binaan_dipindah:int,komentar_dipindah:int,grup:array<int,array{nama:string,dipertahankan:string,dihapus:array<int,string>,binaan:int}>}
+ */
+function pengawas_gabung_nama_sama(): array
+{
+    $ringkas = ['akun_dihapus' => 0, 'binaan_dipindah' => 0, 'komentar_dipindah' => 0, 'grup' => []];
+    foreach (pengawas_duplikat_grup() as $g) {
+        $akun = $g['akun'];
+        usort($akun, static fn(array $a, array $b): int => (int) $a['id'] <=> (int) $b['id']);
+        $tetap = $akun[0];
+        $tetapId = (int) $tetap['id'];
+        $dihapus = [];
+        $binaanPindah = 0;
+
+        db()->exec('BEGIN IMMEDIATE');
+        try {
+            $nipPakai = nip_bersih((string) ($tetap['nip'] ?? ''));
+            $aktifPakai = (int) $tetap['aktif'] === 1;
+            for ($i = 1; $i < count($akun); $i++) {
+                $dup = $akun[$i];
+                $dupId = (int) $dup['id'];
+                if ($dupId <= 0 || $dupId === $tetapId) {
+                    continue;
+                }
+                // 1) sekolah binaan
+                foreach (all('SELECT sekolah_id FROM pengawas_sekolah WHERE user_id = ?', [$dupId]) as $b) {
+                    q('INSERT OR IGNORE INTO pengawas_sekolah (user_id, sekolah_id, dibuat) VALUES (?,?,?)',
+                        [$tetapId, (int) $b['sekolah_id'], date('Y-m-d H:i:s')]);
+                    $binaanPindah++;
+                }
+                // 2) komentar pengawas pada rekapan madrasah (satu komentar per madrasah per pengawas)
+                foreach (all('SELECT * FROM komentar_pengawas WHERE pengawas_id = ?', [$dupId]) as $k) {
+                    $ada = one('SELECT * FROM komentar_pengawas WHERE pengawas_id = ? AND sekolah_id = ?',
+                        [$tetapId, (int) $k['sekolah_id']]);
+                    if (!$ada) {
+                        q('UPDATE komentar_pengawas SET pengawas_id = ? WHERE id = ?', [$tetapId, (int) $k['id']]);
+                        $ringkas['komentar_dipindah']++;
+                    } else {
+                        // Keduanya sudah mengomentari madrasah yang sama → pertahankan yang paling akhir diubah.
+                        $wA = (string) ($ada['diubah'] ?? '');
+                        $wB = (string) ($k['diubah'] ?? '');
+                        if ($wB > $wA) {
+                            q('UPDATE komentar_pengawas SET isi = ?, diubah = ?, dibuat = ? WHERE id = ?',
+                                [(string) $k['isi'], $wB, (string) ($k['dibuat'] ?? ''), (int) $ada['id']]);
+                            $ringkas['komentar_dipindah']++;
+                        }
+                        q('DELETE FROM komentar_pengawas WHERE id = ?', [(int) $k['id']]);
+                    }
+                }
+                // 3) NIP & status aktif diwarisi bila akun yang dipertahankan belum punya
+                $nipDup = nip_bersih((string) ($dup['nip'] ?? ''));
+                if ($nipPakai === '' && $nipDup !== '') {
+                    $nipPakai = $nipDup;
+                }
+                if ((int) $dup['aktif'] === 1) {
+                    $aktifPakai = true;
+                }
+                // 4) hapus akun ganda (binaan & komentarnya sudah dipindahkan)
+                q("DELETE FROM users WHERE id = ? AND role = 'pengawas'", [$dupId]);
+                $dihapus[] = (string) $dup['username'];
+                $ringkas['akun_dihapus']++;
+            }
+            if ($nipPakai !== nip_bersih((string) ($tetap['nip'] ?? ''))) {
+                q('UPDATE users SET nip = ? WHERE id = ?', [$nipPakai, $tetapId]);
+            }
+            if ($aktifPakai && (int) $tetap['aktif'] !== 1) {
+                q('UPDATE users SET aktif = 1 WHERE id = ?', [$tetapId]);
+            }
+            db()->exec('COMMIT');
+        } catch (Throwable $ex) {
+            db()->exec('ROLLBACK');
+            throw $ex;
+        }
+
+        if ($dihapus) {
+            $ringkas['grup'][] = [
+                'nama'           => (string) $tetap['nama'],
+                'dipertahankan'  => (string) $tetap['username'],
+                'dihapus'        => $dihapus,
+                'binaan'         => $binaanPindah,
+            ];
+        }
+    }
+    $ringkas['binaan_dipindah'] = array_sum(array_column($ringkas['grup'], 'binaan'));
+    return $ringkas;
+}
+
+/**
+ * Jalankan penggabungan akun pengawas bernama sama SATU KALI saja setelah pembaruan dipasang
+ * (penanda `app_pengaturan.pengawas_gabung_v1`), supaya data pemilik yang sudah telanjur punya
+ * akun ganda langsung menjadi satu tanpa harus menekan tombol apa pun. Idempoten: penanda yang sudah
+ * ada membuat fungsi ini tidak melakukan apa pun.
+ */
+function pengawas_gabung_sekali(): array
+{
+    if (app_setting('pengawas_gabung_v1') !== '') {
+        return ['akun_dihapus' => 0, 'binaan_dipindah' => 0, 'komentar_dipindah' => 0, 'grup' => []];
+    }
+    $hasil = pengawas_gabung_nama_sama();
+    app_setting_set('pengawas_gabung_v1', date('Y-m-d H:i:s') . '|' . (int) $hasil['akun_dihapus']);
+    if ($hasil['akun_dihapus'] > 0) {
+        error_log('[supervisi] pengawas_gabung_v1: ' . $hasil['akun_dihapus'] . ' akun ganda digabung ('
+            . $hasil['binaan_dipindah'] . ' binaan dipindahkan).');
+    }
+    return $hasil;
+}
+
 // ------------------------------------------- akun PENGAWAS BINA dari halaman pendaftaran (skema 18)
 // Permintaan pemilik: "Pada halaman pendaftaran tambahkan inputan Nama Pengawas Bina dan NIP.
 // Posisi dibawah nama kepala sekolah. Nama Pengawas yang diinput otomatis masuk di akun super admin
@@ -1050,10 +1384,13 @@ function pengawas_pendaftaran(int $sekolahId, string $nama, string $nip = ''): ?
     }
     $nip = nip_bersih($nip);
 
-    // Sudah terdaftar? Cocokkan lewat NIP dulu (paling pasti), lalu nama (tanpa peduli besar-kecil).
+    // Sudah terdaftar? Cocokkan lewat NIP dulu (paling pasti), lalu NAMA yang dinormalkan
+    // (pengawas_nama_kunci(): besar-kecil huruf, spasi, titik, dan koma diabaikan) supaya
+    // "Iqdar Najmi S. Abdul, SE, M.Pd" dan "IQDAR NAJMI S.ABDUL SE M.Pd" tetap SATU akun —
+    // permintaan pemilik: *"Buat yang nama pengawas sama jadikan satu sekolah binaannya."*
     $lama = null;
     if ($nip !== '') {
-        foreach (all('SELECT * FROM users WHERE role = "pengawas"', []) as $r) {
+        foreach (all("SELECT * FROM users WHERE role = 'pengawas'", []) as $r) {
             if (nip_bersih((string) ($r['nip'] ?? '')) === $nip) {
                 $lama = $r;
                 break;
@@ -1061,7 +1398,13 @@ function pengawas_pendaftaran(int $sekolahId, string $nama, string $nip = ''): ?
         }
     }
     if (!$lama) {
-        $lama = one('SELECT * FROM users WHERE role = "pengawas" AND LOWER(TRIM(nama)) = LOWER(?)', [$nama]);
+        $kunciBaru = pengawas_nama_kunci($nama);
+        foreach (all("SELECT * FROM users WHERE role = 'pengawas' ORDER BY id", []) as $r) {
+            if (pengawas_nama_kunci((string) ($r['nama'] ?? '')) === $kunciBaru) {
+                $lama = $r;
+                break;
+            }
+        }
     }
 
     if ($lama) {
@@ -1086,7 +1429,11 @@ function pengawas_pendaftaran(int $sekolahId, string $nama, string $nip = ''): ?
     }
 
     // Binaan: sekolah yang baru didaftarkan (hanya bila sekolahnya memang disetujui & aktif).
-    if (one('SELECT id FROM sekolah WHERE id = ? AND verifikasi = "disetujui" AND aktif = 1', [$sekolahId])) {
+    // ATURAN SATU SEKOLAH = SATU PENGAWAS: bila sekolah itu sudah dibina pengawas LAIN, tautan
+    // binaan TIDAK ditambahkan (sekolah tidak boleh punya dua pengawas). Akun pengawasnya sendiri
+    // tetap dibuat/dipakai seperti biasa — Super Admin yang memutuskan pada halaman Akun Pengawas.
+    if (one('SELECT id FROM sekolah WHERE id = ? AND verifikasi = "disetujui" AND aktif = 1', [$sekolahId])
+        && pengawas_binaan_oleh($sekolahId, $uid) === null) {
         q('INSERT OR IGNORE INTO pengawas_sekolah (user_id, sekolah_id, dibuat) VALUES (?,?,?)',
             [$uid, $sekolahId, date('Y-m-d H:i:s')]);
     }
@@ -1231,6 +1578,101 @@ function sekolah_stat(int $sid): array
         'guru_dinilai'=> $guruDinilai,
         'cakupan'     => $guru > 0 ? (int) round($guruDinilai / $guru * 100) : 0,
     ];
+}
+
+/**
+ * DATA TABEL "PERINGKAT SEKOLAH" pada dasbor lintas sekolah milik Super Admin.
+ *
+ * Permintaan pemilik (v1.27.0): kartu "Peringkat Sekolah" diberi tombol **Cetak** dan
+ * **Unduh Word** — jadi sekarang ada TIGA tempat yang menampilkan data yang sama:
+ *   1. dasbor          → `index.php?semua=1` (tabel di kartu Peringkat Sekolah),
+ *   2. lembar cetak    → `cetak_peringkat.php` (A4 landscape),
+ *   3. unduhan Word    → `peringkat_docx.php` (.docx landscape).
+ * Semuanya WAJIB memakai fungsi ini supaya angka, label masa aktif, dan urutannya tidak mungkin
+ * berbeda antar ketiga keluaran. Jangan menulis query/sort salinan di halaman-halaman itu.
+ *
+ * Urutan baris (permintaan pemilik): sekolah dengan MASA AKTIF paling lama di atas, lalu nama
+ * sekolah sebagai penentu kedua (lihat aktivasi_urut_kunci()).
+ *
+ * @param array<int,array<string,mixed>>|null $rows baris hasil query dasbor bila sudah tersedia
+ *                                                   (agar tidak query dua kali); null = query sendiri.
+ * @return array{baris: array<int,array<string,mixed>>, tot: array<string,mixed>}
+ */
+function peringkat_sekolah(?array $rows = null): array
+{
+    if ($rows === null) {
+        $rows = all('SELECT s.*,
+            (SELECT COUNT(*) FROM guru g WHERE g.sekolah_id = s.id AND g.aktif = 1) guru,
+            (SELECT COUNT(*) FROM users u WHERE u.sekolah_id = s.id) users,
+            (SELECT COUNT(*) FROM supervisi v WHERE v.sekolah_id = s.id AND v.status = "final") supervisi,
+            (SELECT COUNT(*) FROM supervisi v WHERE v.sekolah_id = s.id AND v.status = "draft") draft,
+            (SELECT AVG(v.nilai) FROM supervisi v WHERE v.sekolah_id = s.id AND v.status = "final") rata,
+            (SELECT MAX(v.tanggal) FROM supervisi v WHERE v.sekolah_id = s.id) terakhir,
+            (SELECT COUNT(DISTINCT v.guru_id) FROM supervisi v WHERE v.sekolah_id = s.id AND v.status = "final") guru_dinilai
+            FROM sekolah s WHERE s.verifikasi = "disetujui" AND s.aktif = 1 ORDER BY s.nama');
+    }
+
+    $baris = [];
+    $totGuru = 0;
+    $totFinal = 0;
+    $totDraft = 0;
+    $totNilai = 0.0;
+    $totN = 0;
+    foreach ($rows as $r) {
+        $rata = $r['rata'] !== null ? (float) $r['rata'] : null;
+        $guru = (int) $r['guru'];
+        $dinilai = (int) $r['guru_dinilai'];
+        $totGuru += $guru;
+        $totFinal += (int) $r['supervisi'];
+        $totDraft += (int) $r['draft'];
+        if ($rata !== null) {
+            $totNilai += $rata;
+            $totN++;
+        }
+        $baris[] = $r + [
+            'rata_nilai' => $rata,
+            'predikat'   => $rata !== null ? predikat_dari($rata, $r) : null,
+            'cakupan'    => $guru > 0 ? (int) round($dinilai / $guru * 100) : 0,
+            'masa'       => aktivasi_masa_aktif($r),
+        ];
+    }
+
+    usort($baris, function ($a, $b) {
+        $ka = aktivasi_urut_kunci($a);
+        $kb = aktivasi_urut_kunci($b);
+        if ($ka !== $kb) {
+            return $kb <=> $ka;
+        }
+        return strcasecmp((string) ($a['nama'] ?? ''), (string) ($b['nama'] ?? ''));
+    });
+
+    $rataGlobal = $totN > 0 ? round($totNilai / $totN, 2) : null;
+
+    return [
+        'baris' => $baris,
+        'tot'   => [
+            'sekolah'  => count($baris),
+            'guru'     => $totGuru,
+            'supervisi'=> $totFinal,
+            'draft'    => $totDraft,
+            'berdata'  => $totN,
+            'rata'     => $rataGlobal,
+            'predikat' => $rataGlobal !== null ? predikat_dari($rataGlobal) : null,
+        ],
+    ];
+}
+
+/**
+ * Label "Masa Aktif" satu baris peringkat sekolah dalam bentuk TEKS BIASA (untuk lembar cetak &
+ * unduhan Word): "Aktif (sisa 695 hari)", "Belum aktivasi (uji coba sisa 15 hari)",
+ * "Masa aktif habis (perlu kode baru)".
+ */
+function peringkat_masa_teks(array $baris): string
+{
+    $ma = $baris['masa'] ?? aktivasi_masa_aktif($baris);
+    $label = (string) ($ma['label'] ?? '');
+    $ket = trim((string) ($ma['ket'] ?? ''));
+    return $ket !== '' ? $label . ' (' . $ket . ')' : $label;
 }
 
 /**
@@ -2866,4 +3308,392 @@ function wa_lembaga_tombol(
     $judul = 'Kirim WhatsApp ke kepala sekolah/madrasah — status: ' . wa_lembaga_status($sekolah);
     return '<a class="' . e($kelas) . '" href="' . e($url) . '" target="_blank" rel="noopener noreferrer"'
         . ' title="' . e($judul) . '">' . ikon('whatsapp', 14) . ' ' . e($label) . '</a>';
+}
+
+// ============================== DAFTAR AKUN PENGAWAS: CETAK & UNDUH WORD (v1.29.0)
+// Permintaan pemilik (tangkapan layar kepala kartu "Daftar Akun Pengawas" dengan kotak merah):
+// *"Yang saya tandai warna merah tambahkan fitur download dan cetak. Hasil download/cetak seperti
+// contoh."* Contohnya: tabel sederhana berkolom **No, Pengawas Bina, Sekolah/Madrasah Binaan
+// (bernomor 1..n), Masa Aktif** — tanpa kop sekolah dan tanpa tanda tangan.
+//
+// Kolom **Masa Aktif** mengacu pada masa aktif SEKOLAH BINAANNYA (bukan akun pengawasnya), jadi
+// angkanya dirangkum dari seluruh binaan aktif: contoh pemilik menampilkan "15 hari" (uji coba)
+// dan "365 hari" (masa aktif 1 tahun). Karena satu pengawas biasanya membina beberapa lembaga,
+// teks ringkasannya berupa **sisa masa aktif TERDEKAT** + rincian jenisnya dalam tanda kurung
+// bila jenisnya lebih dari satu (mis. "3 hari (2 aktif, 7 uji coba, 1 terkunci)").
+//
+// Kategori diambil dari `aktivasi_masa_aktif()` / `aktivasi_status()` — SATU SUMBER KEBENARAN,
+// jangan menghitung ulang di halaman/lembar cetak.
+
+/**
+ * RINGKASAN masa aktif seluruh sekolah binaan seorang pengawas.
+ *
+ * @param array<int,array<string,mixed>> $binaan baris tabel `sekolah` (hasil sekolah_binaan())
+ * @return array{total:int,aktif:int,uji:int,tanpa_batas:int,tanpa_tanggal:int,terkunci:int,min_hari:int,max_hari:int}
+ *   aktif        = masa aktif 1 tahun yang masih berjalan (punya tanggal berakhir)
+ *   uji          = masa uji coba (belum diaktivasi) yang masih berjalan
+ *   tanpa_batas  = sekolah `aktif` yang belum punya tanggal berakhir (tanpa batas waktu)
+ *   tanpa_tanggal= sekolah `dibatasi` yang tanggal mulai ujinya tidak tercatat
+ *   terkunci     = masa aktif / masa uji sudah HABIS (aplikasi lembaga itu terkunci)
+ *   min_hari/max_hari = sisa hari terdekat & terjauh di antara binaan yang masih berjalan
+ */
+function pengawas_binaan_masa(array $binaan): array
+{
+    $r = [
+        'total' => count($binaan), 'aktif' => 0, 'uji' => 0, 'tanpa_batas' => 0,
+        'tanpa_tanggal' => 0, 'terkunci' => 0, 'min_hari' => 0, 'max_hari' => 0,
+    ];
+    foreach ($binaan as $s) {
+        $ma = aktivasi_masa_aktif($s);
+        $keadaan = (string) ($ma['keadaan'] ?? '');
+        $hari = (int) ($ma['sisa_hari'] ?? 0);
+        if ($keadaan === 'kadaluarsa' || $keadaan === 'uji_habis') {
+            $r['terkunci']++;
+            continue;
+        }
+        if ($keadaan === 'dibatasi') {
+            if ($hari <= 0) {
+                $r['tanpa_tanggal']++;
+                continue;
+            }
+            $r['uji']++;
+        } else { // aktif
+            if (trim((string) ($ma['sampai'] ?? '')) === '') {
+                $r['tanpa_batas']++;
+                continue;
+            }
+            if ($hari <= 0) {
+                $r['terkunci']++;
+                continue;
+            }
+            $r['aktif']++;
+        }
+        if ($r['min_hari'] === 0 || $hari < $r['min_hari']) {
+            $r['min_hari'] = $hari;
+        }
+        if ($hari > $r['max_hari']) {
+            $r['max_hari'] = $hari;
+        }
+    }
+    return $r;
+}
+
+/**
+ * Teks kolom "Masa Aktif" untuk LEMBAR CETAK & UNDUHAN WORD — bentuk TEKS BIASA (tanpa tag HTML
+ * dan tanpa tanda "·", karena hasil cetak aplikasi ini bebas middot).
+ *
+ * Bentuknya mengikuti contoh pemilik: satu angka sisa masa aktif, mis. **"15 hari"** (masa uji
+ * coba) atau **"365 hari"** (masa aktif 1 tahun). Bila jangkauan sisanya berbeda-beda, ditulis
+ * sebagai rentang ("3-15 hari"). Rincian jenis binaan ditambahkan dalam tanda kurung HANYA bila
+ * jenisnya lebih dari satu, supaya barisnya tetap ringkas seperti contoh.
+ */
+function pengawas_masa_teks(array $masa): string
+{
+    $total = (int) ($masa['total'] ?? 0);
+    if ($total <= 0) {
+        return '—';
+    }
+    $bagian = [];
+    if ((int) ($masa['aktif'] ?? 0) > 0) {
+        $bagian[] = (int) $masa['aktif'] . ' aktif';
+    }
+    if ((int) ($masa['tanpa_batas'] ?? 0) > 0) {
+        $bagian[] = (int) $masa['tanpa_batas'] . ' tanpa batas';
+    }
+    if ((int) ($masa['uji'] ?? 0) > 0) {
+        $bagian[] = (int) $masa['uji'] . ' uji coba';
+    }
+    if ((int) ($masa['tanpa_tanggal'] ?? 0) > 0) {
+        $bagian[] = (int) $masa['tanpa_tanggal'] . ' tanpa tanggal uji';
+    }
+    if ((int) ($masa['terkunci'] ?? 0) > 0) {
+        $bagian[] = (int) $masa['terkunci'] . ' terkunci';
+    }
+
+    $min = (int) ($masa['min_hari'] ?? 0);
+    $max = (int) ($masa['max_hari'] ?? 0);
+    $utama = '';
+    if ($min > 0) {
+        $utama = $min === $max ? $min . ' hari' : $min . '-' . $max . ' hari';
+    } elseif ((int) ($masa['tanpa_batas'] ?? 0) > 0) {
+        $utama = 'Tanpa batas';
+    } elseif ((int) ($masa['terkunci'] ?? 0) > 0) {
+        $utama = 'Terkunci';
+    }
+    if ($utama === '') {
+        return implode(', ', $bagian);
+    }
+    return count($bagian) > 1 ? $utama . ' (' . implode(', ', $bagian) . ')' : $utama;
+}
+
+/**
+ * Bahan "Daftar Akun Pengawas" — SATU SUMBER DATA untuk halaman Akun Pengawas, lembar CETAK
+ * (`cetak_pengawas.php`), dan unduhan Word (`pengawas_docx.php`).
+ *
+ * Urutan akun SAMA dengan daftar di halaman (nama A→Z) supaya hasil cetak tidak berbeda dari yang
+ * dilihat di layar. Yang dihitung sebagai binaan = sekolah binaan yang **aktif** (yang benar-benar
+ * dapat dibuka pengawas); binaan nonaktif dilaporkan terpisah pada kunci `nonaktif`.
+ *
+ * @return array{baris: array<int,array<string,mixed>>, tot: array<string,int>}
+ *   baris: id, nama, username, aktif, ditinjau, jumlah, nonaktif, binaan[], masa[], masa_teks
+ *   tot  : akun, akun_aktif, binaan, nonaktif, aktif, tanpa_batas, uji, tanpa_tanggal, terkunci
+ */
+function pengawas_binaan_ringkas(): array
+{
+    $akun = all('SELECT * FROM users WHERE role = "pengawas" ORDER BY nama');
+    $baris = [];
+    $tot = [
+        'akun' => 0, 'akun_aktif' => 0, 'binaan' => 0, 'nonaktif' => 0,
+        'aktif' => 0, 'tanpa_batas' => 0, 'uji' => 0, 'tanpa_tanggal' => 0, 'terkunci' => 0,
+    ];
+    foreach ($akun as $r) {
+        $id = (int) $r['id'];
+        $binaan = sekolah_binaan($id, true);
+        $semua = sekolah_binaan($id, false);
+        $masa = pengawas_binaan_masa($binaan);
+        $aktifAkun = (int) $r['aktif'] === 1;
+        // "menunggu ditinjau" = akun nonaktif yang diajukan lewat halaman pendaftaran sekolah
+        // (penanda yang sama dengan yang dipakai halaman Akun Pengawas).
+        $menunggu = !$aktifAkun && (string) ($r['asal'] ?? '') === 'pendaftaran';
+        $tot['akun']++;
+        $tot['akun_aktif'] += $aktifAkun ? 1 : 0;
+        $tot['binaan'] += count($binaan);
+        $tot['nonaktif'] += count($semua) - count($binaan);
+        foreach (['aktif', 'tanpa_batas', 'uji', 'tanpa_tanggal', 'terkunci'] as $k) {
+            $tot[$k] += (int) $masa[$k];
+        }
+        $baris[] = [
+            'id'        => $id,
+            'nama'      => (string) $r['nama'],
+            'username'  => (string) $r['username'],
+            'aktif'     => $aktifAkun,
+            'ditinjau'  => !$menunggu,
+            'jumlah'    => count($binaan),
+            'nonaktif'  => count($semua) - count($binaan),
+            'binaan'    => $binaan,
+            'masa'      => $masa,
+            'masa_teks' => pengawas_masa_teks($masa),
+        ];
+    }
+    return ['baris' => $baris, 'tot' => $tot];
+}
+
+// ============================================================================================
+// REKAP KEPALA SEKOLAH/MADRASAH — menu Super Admin "Rekap Kepala Sekolah" (v1.31.0)
+// --------------------------------------------------------------------------------------------
+// Permintaan pemilik: *"Pada halaman super admin pada bagian layanan tambahkan menu yang
+// menampilkan rekapan: No, nama sekolah/madrasah, nama kepala sekolah, Nomer HP kepala sekolah.
+// Tujuannya untuk mempermudah super admin mengecek kepala sekolah disetiap lembaga. tambahkan
+// fitur cetak pdf."*
+//
+// Nomor HP kepala sekolah dibaca dari kolom `sekolah.telepon` (diisi lembaga sendiri pada menu
+// Profil & Pengaturan dengan label "Telepon / HP (WhatsApp)", atau oleh Super Admin pada Kelola
+// Sekolah) dengan CADANGAN `kontak_telepon` dari formulir pendaftaran. Nilai yang tidak masuk akal
+// sebagai nomor (kosong, "-", "0") dilewati supaya rekap tidak menampilkan nomor palsu.
+// Satu sumber data untuk halaman rekap (`rekap_kepala.php`) DAN lembar cetak/PDF-nya
+// (`cetak_rekap_kepala.php`) — jangan menulis query salinan di halaman cetak.
+// ============================================================================================
+
+/** Nomor HP kepala sekolah/madrasah apa adanya — '' bila belum diisi / bukan nomor yang masuk akal. */
+function rekap_kepala_hp(?array $sekolah): string
+{
+    if (!$sekolah) {
+        return '';
+    }
+    foreach (['telepon', 'kontak_telepon'] as $kolom) {
+        $nomor = trim((string) ($sekolah[$kolom] ?? ''));
+        if ($nomor === '' || !aktivasi_wa_sah($nomor)) {
+            continue;
+        }
+        return $nomor;
+    }
+    return '';
+}
+
+/** Nama kepala sekolah/madrasah apa adanya — '' bila belum diisi atau hanya berisi tanda kosong. */
+function rekap_kepala_nama(?array $sekolah): string
+{
+    if (!$sekolah) {
+        return '';
+    }
+    $nama = trim((string) ($sekolah['kepala_sekolah'] ?? ''));
+    return identitas_nilai($nama);
+}
+
+/**
+ * DAFTAR REKAP kepala sekolah/madrasah (satu baris per sekolah, urut nama sekolah).
+ *
+ * @param string $cari   kata kunci (nama sekolah / nama kepala / nomor HP); '' = semua
+ * @param string $status 'aktif' | 'nonaktif' | '' (semua)
+ * @return array<int,array<string,mixed>> baris: id, nama, jenis, aktif, verifikasi, kepala, hp,
+ *                                              kepala_ada, hp_ada, lengkap
+ */
+function rekap_kepala_daftar(string $cari = '', string $status = ''): array
+{
+    $cari = trim($cari);
+    $rows = all('SELECT id, nama, jenis, aktif, verifikasi, kepala_sekolah, telepon, kontak_telepon
+                 FROM sekolah ORDER BY nama COLLATE NOCASE');
+    $keluar = [];
+    foreach ($rows as $r) {
+        $kepala = rekap_kepala_nama($r);
+        $hp = rekap_kepala_hp($r);
+        $aktif = (int) ($r['aktif'] ?? 0) === 1 && (string) ($r['verifikasi'] ?? '') === 'disetujui';
+        $baris = [
+            'id'         => (int) $r['id'],
+            'nama'       => (string) $r['nama'],
+            'jenis'      => (string) ($r['jenis'] ?? 'umum'),
+            'aktif'      => $aktif,
+            'verifikasi' => (string) ($r['verifikasi'] ?? 'disetujui'),
+            'kepala'     => $kepala,
+            'hp'         => $hp,
+            'kepala_ada' => $kepala !== '',
+            'hp_ada'     => $hp !== '',
+            'lengkap'    => $kepala !== '' && $hp !== '',
+        ];
+        if ($status === 'aktif' && !$aktif) {
+            continue;
+        }
+        if ($status === 'nonaktif' && $aktif) {
+            continue;
+        }
+        if ($cari !== '') {
+            $teks = $baris['nama'] . ' ' . $kepala . ' ' . $hp;
+            if (stripos($teks, $cari) === false) {
+                continue;
+            }
+        }
+        $keluar[] = $baris;
+    }
+    return $keluar;
+}
+
+/**
+ * Ringkasan rekap kepala sekolah/madrasah.
+ *
+ * @return array{total:int,aktif:int,nonaktif:int,kepala:int,hp:int,lengkap:int,belum_lengkap:int}
+ *   kepala         = sekolah yang nama kepalanya sudah diisi
+ *   hp             = sekolah yang nomor HP kepalanya sudah diisi
+ *   lengkap        = nama kepala DAN nomor HP sudah diisi
+ *   belum_lengkap  = salah satu dari keduanya masih kosong
+ */
+function rekap_kepala_ringkas(array $daftar): array
+{
+    $r = ['total' => 0, 'aktif' => 0, 'nonaktif' => 0, 'kepala' => 0, 'hp' => 0, 'lengkap' => 0, 'belum_lengkap' => 0];
+    foreach ($daftar as $b) {
+        $r['total']++;
+        $r[$b['aktif'] ? 'aktif' : 'nonaktif']++;
+        $r['kepala'] += $b['kepala_ada'] ? 1 : 0;
+        $r['hp'] += $b['hp_ada'] ? 1 : 0;
+        $r['lengkap'] += $b['lengkap'] ? 1 : 0;
+        $r['belum_lengkap'] += $b['lengkap'] ? 0 : 1;
+    }
+    return $r;
+}
+
+// ============================================================================================
+// PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik)
+// --------------------------------------------------------------------------------------------
+// "Madrasah/sekolah yang statusnya di nonaktifkan oleh admin tidak bisa lagi melakukan
+//  pendaftaran. Akan terdeteksi nama sekolah/lembaganya dan kepala sekolah/madrasahnya pernah
+//  mendaftar (walaupun beda huruf besar maupun kecil). Sehingga ketika klik daftar langsung
+//  diarahkan ke WA 085394726089 untuk minta bantuan"
+//
+// Cara kerjanya: halaman pendaftaran publik (daftar.php) TIDAK memproses pendaftaran bila nama
+// lembaga ATAU nama kepala sekolah/madrasah yang diisi SAMA dengan lembaga yang sudah ada dan
+// statusnya TIDAK AKTIF (`sekolah.aktif = 0`, yaitu dinonaktifkan Admin atau pendaftarannya
+// ditolak). Pendaftar lalu diarahkan menghubungi Admin aplikasi lewat WhatsApp
+// (AKTIVASI_WA_ADMIN) untuk meminta bantuan — datanya TIDAK diduplikasi.
+//
+// Pembanding nama memakai nama_kunci_pembanding(): "MA. Sirojuth Tholibiin" = "ma sirojuth
+// tholibiin" = "MA SIROJUTH THOLIBIIN" (besar/kecil huruf, spasi, dan tanda baca diabaikan).
+// ============================================================================================
+
+/**
+ * Lembaga NONAKTIF yang pernah terdaftar dengan nama lembaga ATAU nama kepala sekolah/madrasah
+ * yang sama dengan isian pendaftar.
+ *
+ * @param string $nama   nama sekolah/madrasah yang diisi pendaftar
+ * @param string $kepala nama kepala sekolah/madrasah yang diisi pendaftar
+ *
+ * @return array{id:int,nama:string,kepala:string,verifikasi:string,alasan:string,cocok:string}|null
+ *   null = tidak ada lembaga nonaktif yang cocok (pendaftaran boleh diproses);
+ *   `cocok` = 'nama' bila yang sama adalah NAMA LEMBAGA, 'kepala' bila nama KEPALAnya.
+ */
+function pendaftaran_sekolah_nonaktif(string $nama, string $kepala): ?array
+{
+    $kNama   = nama_kunci_pembanding($nama);
+    $kKepala = nama_kunci_pembanding($kepala);
+    // Isian yang terlalu pendek (mis. "-", "MA", atau nama kepala yang hanya berisi gelar) tidak
+    // dipakai membandingkan supaya tidak menolak pendaftaran yang sebenarnya sah.
+    $cekNama   = strlen($kNama) >= DAFTAR_NAMA_MIN;
+    $cekKepala = strlen($kKepala) >= DAFTAR_KEPALA_MIN;
+    if (!$cekNama && !$cekKepala) {
+        return null;
+    }
+
+    try {
+        $baris = all('SELECT id, nama, kepala_sekolah, verifikasi, alasan_tolak
+                        FROM sekolah WHERE aktif = 0 ORDER BY id');
+    } catch (Throwable $e) {
+        // Kegagalan membaca basis data tidak boleh menghalangi pendaftaran (halaman publik).
+        return null;
+    }
+
+    foreach ($baris as $s) {
+        $cocok = '';
+        if ($cekNama && nama_kunci_pembanding((string) ($s['nama'] ?? '')) === $kNama) {
+            $cocok = 'nama';
+        } elseif ($cekKepala && nama_kunci_pembanding((string) ($s['kepala_sekolah'] ?? '')) === $kKepala) {
+            $cocok = 'kepala';
+        }
+        if ($cocok === '') {
+            continue;
+        }
+        return [
+            'id'         => (int) $s['id'],
+            'nama'       => (string) ($s['nama'] ?? ''),
+            'kepala'     => (string) ($s['kepala_sekolah'] ?? ''),
+            'verifikasi' => (string) ($s['verifikasi'] ?? ''),
+            'alasan'     => (string) ($s['alasan_tolak'] ?? ''),
+            'cocok'      => $cocok,
+        ];
+    }
+    return null;
+}
+
+/** Nomor WhatsApp Admin aplikasi untuk bantuan pendaftaran (bentuk internasional, untuk wa.me). */
+function pendaftaran_bantuan_nomor(): string
+{
+    return wa_internasional(AKTIVASI_WA_ADMIN);
+}
+
+/**
+ * Pesan WhatsApp permohonan bantuan pendaftaran bagi lembaga yang dinonaktifkan Admin.
+ * Nama lembaga & nama kepala diambil dari ISIAN PENDAFTAR (bukan dari basis data) supaya Admin
+ * aplikasi langsung tahu siapa yang sedang menghubunginya.
+ */
+function pendaftaran_bantuan_pesan(string $nama, string $kepala = '', ?array $cocok = null): string
+{
+    $nama = trim($nama) !== '' ? trim($nama) : '-';
+    $kepala = trim($kepala);
+    $pesan = 'Assalamualaikum Admin Aplikasi ' . APP_NAME . '. Kami dari ' . $nama
+        . ($kepala !== '' && $kepala !== '-' ? ' (Kepala Sekolah/Madrasah: ' . $kepala . ')' : '')
+        . ' ingin mendaftar pada aplikasi ' . APP_NAME . ', tetapi sistem mendeteksi bahwa nama '
+        . 'sekolah/madrasah atau kepala sekolah/madrasah kami sudah pernah mendaftar dan statusnya '
+        . 'dinonaktifkan. Mohon bantuan untuk mengaktifkan kembali agar kami dapat mendaftar. '
+        . 'Terima kasih.';
+    if ($cocok !== null) {
+        $sebab = (string) ($cocok['cocok'] ?? '') === 'kepala'
+            ? 'Kepala sekolah/madrasah'
+            : 'Nama sekolah/madrasah';
+        $pesan .= ' (' . $sebab . ' terdeteksi sama: ' . trim((string) ($cocok['nama'] ?? '')) . ')';
+    }
+    return $pesan;
+}
+
+/** Tautan WhatsApp (wa.me) untuk meminta bantuan pendaftaran. */
+function pendaftaran_bantuan_tautan(string $nama, string $kepala = '', ?array $cocok = null): string
+{
+    return 'https://wa.me/' . pendaftaran_bantuan_nomor()
+        . '?text=' . rawurlencode(pendaftaran_bantuan_pesan($nama, $kepala, $cocok));
 }
