@@ -5,7 +5,7 @@
 declare(strict_types=1);
 
 define('APP_NAME', 'Supervisi Guru');
-define('APP_VERSION', '1.33.0');
+define('APP_VERSION', '1.37.2');
 
 // Unggahan berkas pengguna lewat media proxy platform (token dibaca server-side
 // dari berkas .vibecoder-media-token; JANGAN pernah dikirim ke browser).
@@ -104,22 +104,36 @@ define('AKTIVASI_INGAT_HARI', 7);
 
 // Nomor WA Admin aplikasi (ditampilkan pada petunjuk aktivasi). Ubah di sini bila berganti.
 // Juga dipakai tombol bantuan pada halaman PENDAFTARAN ketika lembaga yang mendaftar ternyata
-// pernah terdaftar dan statusnya DINONAKTIFKAN Admin (lihat pendaftaran_sekolah_nonaktif()).
+// datanya SUDAH PERNAH DIDAFTARKAN (lihat pendaftaran_sekolah_terdaftar()).
 define('AKTIVASI_WA_ADMIN', '085394726089');
 
 // ---------------------------------------------------------------------------------------------
-// PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik)
-// "Madrasah/sekolah yang statusnya di nonaktifkan oleh admin tidak bisa lagi melakukan
-// pendaftaran. Akan terdeteksi nama sekolah/lembaganya dan kepala sekolah/madrasahnya pernah
-// mendaftar (walaupun beda huruf besar maupun kecil). Sehingga ketika klik daftar langsung
-// diarahkan ke WA 085394726089 untuk minta bantuan."
+// PENOLAKAN OTOMATIS PENDAFTARAN GANDA — "DATA LEMBAGA SUDAH PERNAH DIDAFTARKAN" (v1.35.0/v1.36.0)
+// "Buat aplikasi menolak otomatis pendaftaran jika terdeteksi nama lembaga atau nama kepala
+//  sekolah sudah ada di dalam database aplikasi ... kecuali sekolah tersebut sudah di hapus
+//  oleh super admin." + "Ya saya ingin lebih ketat termasuk mencocokkan NPSN/NSM"
 //
-// Pembandingnya nama yang DINORMALKAN (huruf kecil, tanpa spasi/titik/koma — lihat
-// nama_kunci_pembanding()). Panjang kunci minimal di bawah mencegah "kecocokan" palsu dari isian
-// yang terlalu pendek (mis. "-", "MA", atau nama kepala yang hanya berisi gelar).
+// Pembanding NAMA memakai nama yang DINORMALKAN (huruf kecil, tanpa spasi/titik/koma — lihat
+// nama_kunci_pembanding()); pembanding NPSN/NSM memakai ANGKANYA saja (angka_dari_isian()).
+// Panjang kunci minimal di bawah mencegah "kecocokan" palsu dari isian yang terlalu pendek
+// (mis. "-", "MA", nama kepala yang hanya berisi gelar, atau NPSN/NSM yang belum lengkap).
 // ---------------------------------------------------------------------------------------------
 define('DAFTAR_NAMA_MIN', 4);    // panjang minimal kunci NAMA lembaga agar dipakai membandingkan
 define('DAFTAR_KEPALA_MIN', 6);  // panjang minimal kunci NAMA kepala sekolah/madrasah
+define('DAFTAR_NPSN_DIGIT', 8);  // NPSN yang sah = TEPAT 8 angka (selain itu tidak dibandingkan)
+define('DAFTAR_NSM_DIGIT', 12);  // NSM yang sah = TEPAT 12 angka (selain itu tidak dibandingkan)
+
+// ---------------------------------------------------------------------------------------------
+// BUKA / TUTUP PENDAFTARAN SEKOLAH/MADRASAH (v1.34.0, permintaan pemilik)
+// "Pada akun super admin tambahkan fitur untuk menutup pendaftaran sekolah/madrasah (seperti
+//  aplikasi e-Guru). Ketika pendaftaran ditutup berikan keterangan bahwa jumlah pendaftar telah
+//  mencapai batas yang ditetapkan oleh sistem. Silahkan hubungi admin di WA 081356964665"
+//
+// Keadaannya TINGKAT APLIKASI (tabel `app_pengaturan`): `daftar_tutup`, `daftar_batas`,
+// `daftar_wa`. Konstanta di bawah hanya NILAI BAWAAN nomor WA admin pada keterangan penutupan —
+// ubah di sini bila nomornya berganti; Super Admin juga dapat mengubahnya dari halaman
+// Pendaftaran. Nomor ini TERPISAH dari AKTIVASI_WA_ADMIN / AKTIVASI_WA_PERMOHONAN.
+define('DAFTAR_WA_BAWAAN', '081356964665');
 
 // ---------------------------------------------------------------------------------------------
 // PERMOHONAN KODE AKTIVASI — kartu "Aktivasi Sekolah/Madrasah" pada menu Status & Aktivasi
@@ -164,6 +178,18 @@ define('AKTIVASI_WA_MAKS', 15);
 // Pembuat aplikasi (tampil pada halaman login).
 define('APP_AUTHOR', 'Supianto');
 define('APP_AUTHOR_JABATAN', 'Kepala MA. Sirojuth Tholibiin Mootilango');
+
+// ---------------------------------------------------------------------------------------------
+// MENU e-PKKM (permintaan pemilik, v1.37.1)
+// "Pada yang saya tandai warna merah tambahkan menu e-PKKM baik di akun kepala sekolah maupun akun
+//  pengawas. Ketika diklik mengarah ke alamat aplikasi e-PKKM di: https://e-pkkm.id/login.php"
+//
+// Menu ini HANYA tautan keluar (aplikasi e-PKKM berdiri sendiri di domainnya sendiri): tidak ada
+// data, tabel, atau halaman baru di aplikasi ini. Alamatnya disimpan di sini sebagai SATU sumber
+// supaya dapat diganti tanpa menyunting inc/layout.php. Hanya tampil untuk kepala sekolah/madrasah
+// (role admin, serta Super Admin dalam konteks sekolah) dan pengawas — guru tidak melihatnya.
+// ---------------------------------------------------------------------------------------------
+define('PKKM_URL', 'https://e-pkkm.id/login.php');
 
 // Lokasi file database SQLite (di dalam folder aplikasi).
 define('DB_FILE', __DIR__ . '/../data/supervisi.sqlite');

@@ -54,6 +54,8 @@ function ikon(string $name, int $size = 18): string
         'close'     => '<path d="M6 6l12 12M18 6L6 18"/>',
         // Ikon TEMA TAMPILAN: tiga bulatan warna (palet) — dipakai menu "Tema Tampilan".
         'palette'   => '<path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.8 3.4-3.6 3.4H15a2 2 0 0 0-1.4 3.4A1.9 1.9 0 0 1 12 21z"/><circle cx="7.6" cy="12" r="1.2"/><circle cx="10.2" cy="8.2" r="1.2"/><circle cx="14.6" cy="8.2" r="1.2"/>',
+        // Ikon MENU e-PKKM (Penilaian Kinerja Kepala Madrasah) — medali bertali.
+        'award'     => '<circle cx="12" cy="9" r="5"/><path d="M8.6 13.3L7 21l5-2.6L17 21l-1.6-7.7"/>',
     ];
     $d = $p[$name] ?? $p['doc'];
     return '<svg class="ic" width="' . $size . '" height="' . $size . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $d . '</svg>';
@@ -265,6 +267,12 @@ function page_top(string $judul, string $menu = ''): void
           <?php if (aktivasi_terbatas($sekolah)): ?><span class="pill <?= aktivasi_terkunci($sekolah) ? 'pill-err' : 'pill-warn' ?>" style="margin-left:auto"><?= e(aktivasi_pil_teks()) ?></span><?php endif; ?>
         </a>
       <?php endif; ?>
+      <?php // MENU e-PKKM (permintaan pemilik): tautan keluar ke aplikasi e-PKKM. Diletakkan paling
+            // akhir pada blok pengawas supaya tampil tepat di atas bagian "Akun" — persis tanda merah
+            // yang diminta. Tautan eksternal dibuka di tab baru agar sesi pengawas tidak hilang. ?>
+      <a class="nav-item" href="<?= e(PKKM_URL) ?>" target="_blank" rel="noopener noreferrer">
+        <?= ikon('award') ?><span>e-PKKM</span>
+      </a>
     <?php elseif ($sekolah && ($super || $u['role'] === 'admin')): ?>
       <div class="nav-sec"><?= $super ? 'Sekolah yang Dikelola' : 'Menu Supervisi' ?></div>
       <?php if ($super): ?>
@@ -309,6 +317,13 @@ function page_top(string $judul, string $menu = ''): void
           <?= ikon('doc') ?><span>Dokumen Madrasah</span>
         </a>
       <?php endif; ?>
+      <?php // MENU e-PKKM (permintaan pemilik): tautan keluar ke aplikasi e-PKKM
+            // (https://e-pkkm.id/login.php) untuk akun kepala sekolah/madrasah. Diletakkan paling
+            // akhir pada blok "Dokumen Pengawas" — tepat di atas bagian "Data Master", persis tanda
+            // merah yang diminta. Dibuka di tab baru supaya halaman supervisi tidak ditinggalkan. ?>
+      <a class="nav-item" href="<?= e(PKKM_URL) ?>" target="_blank" rel="noopener noreferrer">
+        <?= ikon('award') ?><span>e-PKKM</span>
+      </a>
 
       <div class="nav-sec">Data Master</div>
       <a class="nav-item <?= in_array($here, ['guru.php', 'guru_edit.php'], true) ? 'on' : '' ?>" href="guru.php">

@@ -1387,6 +1387,76 @@
     });
   }
 
+  /**
+   * PERINGATAN "BINAAN SUDAH TIDAK AKTIF" (v1.37.2, permintaan pemilik).
+   *
+   * Pada daftar Sekolah/Madrasah Binaan di akun pengawas, pil keadaan "Masa uji habis"/"Masa aktif
+   * habis" dan tombol "Lihat Rekap" binaan yang masa uji coba / masa aktifnya sudah HABIS membawa
+   * atribut `data-binaan-tutup`. Klik pada elemen itu tidak membuka sekolahnya (aplikasinya
+   * terkunci), melainkan menampilkan <dialog id="popupBinaanTutup"> berisi peringatan status binaan
+   * + ajakan agar kepala sekolah/madrasah mengaktifkan lembaganya (termasuk tombol WhatsApp bila
+   * nomor lembaga tersedia). Isi popup diambil dari atribut `data-*` elemen yang diklik.
+   *
+   * Tanpa JavaScript tautan `href`-nya tetap membuka peringatan versi halaman (index.php?
+   * binaan_tutup=ID → pesan dari binaan_nonaktif_pesan()), jadi tidak ada yang "diam saja".
+   */
+  function initBinaanTutup() {
+    var dlg = document.getElementById('popupBinaanTutup');
+    if (!dlg) return;
+
+    var elNama = dlg.querySelector('[data-bt-nama]');
+    var elKepala = dlg.querySelector('[data-bt-kepala]');
+    var elStatus = dlg.querySelector('[data-bt-status]');
+    var elKet = dlg.querySelector('[data-bt-ket]');
+    var elTanggal = dlg.querySelector('[data-bt-tanggal]');
+    var barisTanggal = dlg.querySelector('[data-bt-tanggal-baris]');
+    var tombolWa = dlg.querySelector('[data-bt-wa]');
+
+    function tutup() {
+      if (typeof dlg.close === 'function' && dlg.open) { dlg.close(); }
+      else { dlg.removeAttribute('open'); }
+    }
+
+    function buka(el) {
+      function isi(n, nilai) { if (n) { n.textContent = nilai || '-'; } }
+      var d = el.dataset || {};
+      isi(elNama, d.nama);
+      isi(elKepala, d.kepala);
+      isi(elStatus, d.status);
+      isi(elKet, d.ket);
+      isi(elTanggal, d.tanggal);
+      if (barisTanggal) { barisTanggal.style.display = d.tanggal ? '' : 'none'; }
+      if (tombolWa) {
+        if (d.wa) {
+          tombolWa.setAttribute('href', d.wa);
+          tombolWa.style.display = '';
+        } else {
+          tombolWa.removeAttribute('href');
+          tombolWa.style.display = 'none';
+        }
+      }
+      dlg.removeAttribute('open');
+      if (typeof dlg.showModal === 'function') {
+        try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+      } else {
+        dlg.setAttribute('open', '');
+      }
+    }
+
+    document.addEventListener('click', function (ev) {
+      var el = ev.target.closest ? ev.target.closest('[data-binaan-tutup]') : null;
+      if (!el) return;
+      ev.preventDefault();
+      buka(el);
+    });
+
+    dlg.addEventListener('click', function (ev) {
+      if (ev.target.closest('[data-bt-tutup]')) { ev.preventDefault(); tutup(); return; }
+      var isiBox = dlg.querySelector('.popup-isi');
+      if (isiBox && !isiBox.contains(ev.target)) { tutup(); }   // klik latar gelap
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initNav();
     initLanding();
@@ -1408,5 +1478,6 @@
     initSalinKode();
     initJenisNsm();
     initChat();
+    initBinaanTutup();
   });
 })();

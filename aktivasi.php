@@ -240,6 +240,29 @@ page_top('Status & Aktivasi', 'aktivasi');
       <?php endif; ?>
     </div>
 
+    <?php if ($lihatKode): ?>
+      <?php
+      // KODE AKTIVASI LEMBAGA SAAT TERKUNCI (permintaan pemilik): "Pada lembaga yang sudah terkunci
+      // tetap tampilkan kode aktifasi agar super admin bisa memberikan kode aktifasi ke lembaga
+      // tersebut." Kode dicetak pada kartu TERATAS ini supaya Super Admin dapat langsung menyalinnya
+      // (tombol Salin) lalu mengirimkannya ke pengelola lembaga — tanpa harus menggulir ke kartu
+      // "Kode Aktivasi Lembaga" di bawah. Hanya Super Admin melihatnya (boleh_lihat_kode_aktivasi()).
+      ?>
+      <div class="kode-aktivasi kode-super" id="kodeTerkunciSuper" style="margin:0 0 16px">
+        <h3 style="margin-top:0"><?= ikon('key', 16) ?> Kode Aktivasi Lembaga
+          &mdash; periode ke-<?= (int) $status['periode'] ?></h3>
+        <p class="sm mut" style="margin:4px 0 12px">Kode ini <b>hanya dilihat Super Admin</b>. Salin lalu
+          kirimkan kepada pengelola <b><?= tetap_kata((string) $sekolah['nama']) ?></b>
+          (akun admin atau kepala lembaga) agar ia dapat memasukkannya sendiri, atau masukkan langsung
+          pada kolom di bawah ini. Kode berlaku untuk <b>masa aktif <?= (int) aktivasi_hari() ?> hari (1 tahun)</b>
+          dan berbeda untuk setiap periode.</p>
+        <div class="kode-baris">
+          <input type="text" id="kodeTerkunciSuperInput" class="kode-kotak" value="<?= e($kode) ?>" readonly>
+          <button class="btn btn-ghost btn-sm" type="button" data-salin="#kodeTerkunciSuperInput"><?= ikon('doc', 14) ?> Salin kode</button>
+        </div>
+      </div>
+    <?php endif; ?>
+
     <?php if ($boleh): ?>
       <form method="post" class="kode-aktivasi" id="formKodeTerkunci" style="margin:0 0 16px">
         <?= csrf_field() ?>
@@ -612,6 +635,9 @@ page_top('Status & Aktivasi', 'aktivasi');
       <span class="chip">Hanya Super Admin</span>
     </div>
 
+    <?php // Saat lembaga TERKUNCI, kode sudah dicetak pada kartu "Aplikasi Terkunci" di atas —
+          // jangan dicetak dua kali di halaman yang sama (membingungkan bagi Super Admin). ?>
+    <?php if (!$terkunci): ?>
     <div class="kode-aktivasi">
       <label class="f" for="kodeAktivasiTop">Kode aktivasi</label>
       <div class="kode-baris">
@@ -636,16 +662,19 @@ page_top('Status & Aktivasi', 'aktivasi');
           }
         ?></p>
     </div>
+    <?php endif; ?>
 
     <div class="grid<?= $terbatas ? '' : ' g21' ?> mt16">
       <?php if ($terkunci): ?>
         <?php // Saat terkunci, kolom kode sudah tersedia pada kartu "Aplikasi Terkunci" di atas —
-              // jangan cetak form kedua (id kembar + membingungkan). ?>
+              // jangan cetak form kedua (id kembar + membingungkan). Kode lembaga juga sudah dicetak
+              // pada kartu itu (khusus Super Admin), jadi keterangan di sini cukup mengarahkan. ?>
         <div class="card card-tight" style="margin:0">
           <h3 style="margin-top:0"><?= ikon('info', 16) ?> Kolom kode tersedia di atas</h3>
           <p class="sm mut" style="margin:4px 0 0">Masukkan kode aktivasi <b>periode ke-<?= (int) $status['periode'] ?></b>
-            pada kartu <b>Aplikasi Terkunci</b> di bagian atas halaman ini. Kode di atas hanya untuk
-            ditampilkan/disalin dan dikirim kepada pengelola sekolah.</p>
+            pada kartu <b>Aplikasi Terkunci</b> di bagian atas halaman ini — kode lembaga ini juga sudah
+            dicetak pada kartu tersebut beserta tombol <b>Salin kode</b> untuk dikirim kepada pengelola
+            sekolah/madrasah.</p>
         </div>
       <?php else: ?>
         <form method="post" class="card card-tight" style="margin:0">

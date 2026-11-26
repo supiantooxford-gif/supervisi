@@ -205,6 +205,11 @@ table.tbl tbody tr:hover td{background:rgba(255,255,255,.6)}
 .pill-ok{background:rgba(14,159,110,.14);color:#047857;border-color:rgba(14,159,110,.28)}
 .pill-warn{background:rgba(217,119,6,.15);color:#b45309;border-color:rgba(217,119,6,.3)}
 .pill-err{background:rgba(220,38,38,.14);color:#b91c1c;border-color:rgba(220,38,38,.3)}
+/* PIL KEADAAN YANG DAPAT DIKLIK (v1.37.2) — pada daftar binaan pengawas, pil "Masa uji habis"/
+   "Masa aktif habis" dibungkus tombol ini: klik = peringatan bahwa binaan sudah tidak aktif.
+   Tanpa gaya ini tombol bawaan peramban merusak bentuk pil. */
+.tombol-pil{display:inline-flex;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;border-radius:999px}
+.tombol-pil:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bar-mini{height:7px;border-radius:99px;background:rgba(99,95,130,.16);overflow:hidden;min-width:74px}
 .bar-mini i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
 .bar-mini i.lvA{background:linear-gradient(90deg,#10b981,#34d399)}
@@ -1059,6 +1064,9 @@ input.kode-kotak{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospac
 .terkunci-card .card-head h2{display:flex;align-items:center;gap:9px;color:#b91c1c}
 .terkunci-card .card-head h2 svg{color:#dc2626}
 .terkunci-card .kode-aktivasi{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.05)}
+/* KODE AKTIVASI LEMBAGA yang tetap ditampilkan pada kartu terkunci (khusus Super Admin): kotaknya
+   diberi warna netral (bukan merah) supaya terbaca sebagai KODE, bukan pesan galat. */
+.terkunci-card .kode-aktivasi.kode-super{border-color:rgba(var(--accent-rgb),.35);background:#fff}
 @media (max-width:560px){
   .terkunci-card .card-head h2{font-size:1.05rem}
 }
@@ -1106,6 +1114,9 @@ dialog.popup-ingat{max-width:560px}
 .popup-isi h2{margin:0 0 6px;font-size:1.22rem}
 .popup-lead{margin:0 0 14px;font-size:.9rem;color:var(--mut)}
 .popup-aksi{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+/* Popup PERINGATAN "binaan sudah tidak aktif" (v1.37.2) — nada merah, bukan kuning. */
+dialog.popup-binaan{max-width:560px}
+.popup-binaan .popup-ic{background:linear-gradient(135deg,rgba(220,38,38,.22),rgba(217,119,6,.16));color:#b91c1c}
 @media print{
   dialog.popup{display:none !important}
   .alert-aktivasi{display:none !important}
@@ -1489,4 +1500,61 @@ img.lp-lindung{
 @media print{
   [data-lindung-wadah]::after{display:none}
   img.lp-lindung{pointer-events:auto}
+}
+
+/* ============================================================================================
+   PENDAFTARAN DITUTUP (v1.34.0) — permintaan pemilik: *"Pada yang saya tandai warna merah buat
+   tombol berkedip-kedip warna merah dan tulisannya 'Pendaftaran Sekolah/Madrasah Ditutup'"*
+   (mengikuti aplikasi e-GURU). Dipakai halaman pendaftaran publik (`daftar.php`) saat Super Admin
+   menutup pendaftaran atau batas pendaftar tercapai. Tombol ini BUKAN tautan (tanpa aksi).
+   Kedipan memakai `opacity` (bukan warna) supaya kontras huruf tetap terjaga; dimatikan bagi
+   pengguna yang mengaktifkan "kurangi gerakan" pada perangkatnya.
+   ============================================================================================ */
+@keyframes tutupKedip{
+  0%,100%{opacity:1;box-shadow:0 10px 22px -12px rgba(153,27,27,.95),0 0 0 0 rgba(220,38,38,.5)}
+  50%{opacity:.55;box-shadow:0 6px 14px -12px rgba(153,27,27,.5),0 0 0 10px rgba(220,38,38,0)}
+}
+.tombol-tutup-kedip{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:14px 22px;margin:0 0 14px;border-radius:14px;
+  background:linear-gradient(145deg,#dc2626,#991b1b);color:#fff;
+  border:1px solid rgba(153,27,27,.55);cursor:default;
+  font-weight:800;font-size:1.02rem;line-height:1.35;letter-spacing:.02em;text-align:center;
+  animation:tutupKedip 1.2s ease-in-out infinite;
+}
+.tombol-tutup-kedip svg{flex:0 0 auto}
+/* Kalimat penutupan: RATA TENGAH dan SELALU SATU BARIS (permintaan pemilik: *"Tulisan yang saya
+   tandai ganti dengan: 'Jumlah pendaftar telah mencapai batas yang ditetapkan oleh sistem' Buat
+   dalam satu baris saja"*).
+   Cara "satu baris": `white-space:nowrap` + ukuran huruf MENGIKUTI LEBAR LAYAR
+   (`min(.95rem, calc((100vw - 88px)/31))`) sehingga kalimatnya menyusut sendiri di HP alih-alih
+   terpotong/terbungkus. Angka 88px = sisa tepi halaman (2×18) + tepi kartu (2×22) + kelonggaran,
+   dan 31 = pembagi aman: lebar kalimat TERUKUR 28,8–29,9 per 1px huruf (diukur pada 8–20px, teks
+   tebal) sehingga masih ada kelonggaran ±4% untuk huruf sistem yang lebih lebar. Di ≤520px tepi
+   kartu dipersempit sehingga huruf tetap lebih besar (terukur: 414px → ±11,4px; 390px → ±10,6px).
+   ⚠️ Selektor WAJIB `.empty .pendaftaran-tutup-pesan` (dua kelas): aturan `.empty p{margin:0 0 16px}`
+   lebih kuat daripada selektor satu kelas, sehingga `margin`/`padding` dari versi pertama tidak
+   pernah terpakai (kotaknya menempel ke kiri). Karena itu `.empty` di kartu ini juga diberi padding
+   samping 0 supaya kalimat mendapat lebar penuh. */
+#kartuPendaftaranTutup .empty{padding:8px 0 14px}
+.empty .pendaftaran-tutup-pesan{
+  font-size:min(.95rem, calc((100vw - 88px) / 31));
+  color:var(--ink);font-weight:700;line-height:1.6;
+  margin:10px 0 0;padding:0;
+  text-align:center;white-space:nowrap;
+}
+/* Di HP: tepi kartu dipersempit supaya kalimat satu baris itu mendapat lebar sebesar mungkin
+   (huruf tidak perlu menyusut terlalu kecil). 60px = tepi halaman (2×18, `.daftar-wrap` pada
+   daftar.php) + tepi kartu (2×12) + kelonggaran 12px. */
+@media (max-width:520px){
+  #kartuPendaftaranTutup{padding:16px 12px}
+  .empty .pendaftaran-tutup-pesan{
+    font-size:min(.85rem, calc((100vw - 60px) / 31));
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  .tombol-tutup-kedip{animation:none}
+}
+@media (max-width:520px){
+  .tombol-tutup-kedip{font-size:.92rem;padding:12px 16px}
 }

@@ -8,12 +8,34 @@ $sekolah = current_sekolah();
 
 // ============================================================ Z. Pengawas: rekap sekolah binaan (hanya lihat)
 if ($u['role'] === 'pengawas') {
+    // PERINGATAN BINAAN SUDAH TIDAK AKTIF (permintaan pemilik, v1.37.2) — CADANGAN TANPA JavaScript.
+    // Pil "Masa uji habis"/"Masa aktif habis" dan tombol "Lihat Rekap" sebuah binaan yang terkunci
+    // ditautkan ke sini; dengan JavaScript keduanya membuka popup #popupBinaanTutup (tanpa memuat
+    // ulang halaman), tanpa JavaScript peringatannya tampil sebagai pesan di atas daftar binaan.
+    if (isset($_GET['binaan_tutup'])) {
+        $idTutup = (int) $_GET['binaan_tutup'];
+        $tutupRow = pengawas_punya((int) $u['id'], $idTutup)
+            ? one('SELECT * FROM sekolah WHERE id = ?', [$idTutup]) : null;
+        if (!$tutupRow) {
+            flash('Sekolah itu bukan sekolah binaan Anda.', 'err');
+        } elseif (aktivasi_terkunci($tutupRow)) {
+            flash(binaan_nonaktif_pesan($tutupRow), 'err');
+        }
+        redirect('index.php');
+    }
     // Memilih sekolah binaan untuk dilihat rekapnya.
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_guard();
         $aksi = (string) ($_POST['aksi'] ?? '');
         $id = (int) ($_POST['sekolah'] ?? 0);
         if ($aksi === 'masuk' && pengawas_punya((int) $u['id'], $id)) {
+            // Binaan yang masa uji coba / masa aktifnya HABIS tidak boleh dimasuki (aplikasinya
+            // terkunci) — pengawas diberi peringatan, bukan dipindahkan ke sekolahnya.
+            $masukRow = one('SELECT * FROM sekolah WHERE id = ?', [$id]);
+            if ($masukRow && aktivasi_terkunci($masukRow)) {
+                flash(binaan_nonaktif_pesan($masukRow), 'err');
+                redirect('index.php');
+            }
             set_sekolah_context($id);
             $nm = (string) val('SELECT nama FROM sekolah WHERE id = ?', [$id], '');
             flash('Menampilkan rekap supervisi ' . $nm . '.');
@@ -213,7 +235,16 @@ if ($u['role'] === 'pengawas') {
               tindak lanjut (terkirim ke kepala sekolah/madrasah), <b>Jadwal</b> untuk jadwal supervisi,
               atau <b>Unduh CSV</b> untuk menyimpan rekapan.</p>
           </div>
-          <span class="chip"><?= count($binaan) ?> <?= e(strtolower($istilahBinaan)) ?></span>
+          <?php
+          // UNDUH WORD (permintaan pemilik, v1.36.1): tombol di kepala kartu, tepat di samping
+          // jumlah binaan. Isinya hanya Nomor, Nama Lembaga, dan Masa Aktif — dibaca dari
+          // sekolah_binaan() + aktivasi_masa_aktif() (sumber data yang sama dengan tabel di bawah).
+          ?>
+          <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;margin-left:auto">
+            <a class="btn btn-ghost btn-sm" href="binaan_docx.php"
+               title="Unduh daftar sekolah/madrasah binaan (nomor, nama lembaga, masa aktif) sebagai berkas Word (.docx)"><?= ikon('doc', 15) ?> Unduh Word</a>
+            <span class="chip"><?= count($binaan) ?> <?= e(strtolower($istilahBinaan)) ?></span>
+          </div>
         </div>
         <div class="table-wrap">
           <table class="tbl">
@@ -227,6 +258,24 @@ if ($u['role'] === 'pengawas') {
             </thead>
             <tbody>
             <?php foreach ($binaan as $s): $st = $statPer[(int) $s['id']]; $rata = $st['rata']; $pred = $rata > 0 ? predikat_dari($rata, $s) : null; ?>
+              <?php
+              // MASA AKTIF APLIKASI tiap binaan (permintaan pemilik) + keadaan TERKUNCI-nya.
+              // $ma dari aktivasi_masa_aktif() — SATU SUMBER dengan tabel Peringkat Sekolah di dasbor
+              // Super Admin; jangan menghitung sisa hari di sini. $tutup = binaan sudah tidak aktif
+              // (masa uji coba habis / masa aktif habis) sehingga aplikasinya terkunci: pil keadaan dan
+              // tombol "Lihat Rekap"-nya tidak membuka sekolah, melainkan popup peringatan #popupBinaanTutup.
+              $ma = aktivasi_masa_aktif($s);
+              $tutup = aktivasi_terkunci($s);
+              $atributTutup = $tutup
+                  ? ' data-binaan-tutup="' . (int) $s['id'] . '" aria-haspopup="dialog"'
+                    . ' data-nama="' . e((string) $s['nama']) . '"'
+                    . ' data-kepala="' . e((string) ($s['kepala_sekolah'] ?: '-')) . '"'
+                    . ' data-status="' . e($ma['label']) . '"'
+                    . ' data-ket="' . e($ma['ket']) . '"'
+                    . ' data-tanggal="' . e($ma['tanggal']) . '"'
+                    . ' data-wa="' . e(wa_lembaga_tautan($s)) . '"'
+                  : '';
+              ?>
               <tr>
                 <td>
                   <b><?= e((string) $s['nama']) ?></b>
@@ -245,10 +294,18 @@ if ($u['role'] === 'pengawas') {
                 // sekolah/madrasah binaannya masing-masing — masih aktif, masa uji coba, atau sudah habis
                 // sehingga aplikasinya terkunci. Datanya dari aktivasi_masa_aktif() (satu sumber dengan
                 // tabel Peringkat Sekolah di dasbor Super Admin) — jangan menghitung sisa hari di sini.
-                $ma = aktivasi_masa_aktif($s);
+                // Pil keadaan yang TERKUNCI dibungkus tombol ber-`data-binaan-tutup` (dapat diklik) agar
+                // klik pada penanda merah "Masa uji habis"/"Masa aktif habis" memunculkan peringatan.
                 ?>
                 <td class="xs" id="masaAktif<?= (int) $s['id'] ?>">
-                  <span class="pill <?= e($ma['kelas']) ?>"<?= $ma['tanggal'] !== '' ? ' title="Berakhir ' . e($ma['tanggal']) . '"' : '' ?>><?= e($ma['label']) ?></span>
+                  <?php if ($tutup): ?>
+                    <button type="button" class="tombol-pil"<?= $atributTutup ?>
+                            title="Binaan ini sudah tidak aktif — klik untuk melihat peringatannya">
+                      <span class="pill <?= e($ma['kelas']) ?>"<?= $ma['tanggal'] !== '' ? ' title="Berakhir ' . e($ma['tanggal']) . '"' : '' ?>><?= e($ma['label']) ?></span>
+                    </button>
+                  <?php else: ?>
+                    <span class="pill <?= e($ma['kelas']) ?>"<?= $ma['tanggal'] !== '' ? ' title="Berakhir ' . e($ma['tanggal']) . '"' : '' ?>><?= e($ma['label']) ?></span>
+                  <?php endif; ?>
                   <span class="tbl-sub"><?= e($ma['ket']) ?></span>
                 </td>
                 <td class="ctr"><?= (int) $st['guru'] ?></td>
@@ -277,11 +334,19 @@ if ($u['role'] === 'pengawas') {
                 </td>
                 <td>
                   <div class="row-actions">
-                    <form method="post">
-                      <?= csrf_field() ?>
-                      <input type="hidden" name="aksi" value="masuk"><input type="hidden" name="sekolah" value="<?= (int) $s['id'] ?>">
-                      <button class="btn btn-primary btn-sm" type="submit" <?= (int) $s['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('report', 14) ?> Lihat Rekap</button>
-                    </form>
+                    <?php if ($tutup): ?>
+                      <?php // Binaan terkunci: "Lihat Rekap" tidak membuka sekolahnya, melainkan
+                            // menampilkan peringatan bahwa status binaan sudah tidak aktif (v1.37.2).
+                            // Tanpa JavaScript tautannya membuka peringatan versi halaman. ?>
+                      <a class="btn btn-primary btn-sm" href="index.php?binaan_tutup=<?= (int) $s['id'] ?>"<?= $atributTutup ?>
+                         title="Binaan sudah tidak aktif — klik untuk melihat peringatan"><?= ikon('report', 14) ?> Lihat Rekap</a>
+                    <?php else: ?>
+                      <form method="post">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="aksi" value="masuk"><input type="hidden" name="sekolah" value="<?= (int) $s['id'] ?>">
+                        <button class="btn btn-primary btn-sm" type="submit" <?= (int) $s['aktif'] === 0 ? 'disabled' : '' ?>><?= ikon('report', 14) ?> Lihat Rekap</button>
+                      </form>
+                    <?php endif; ?>
                     <a class="btn btn-ghost btn-sm <?= isset($komentarSayaPerBinaan[(int) $s['id']]) ? 'btn-ok' : '' ?>"
                        href="laporan.php?sekolah=<?= (int) $s['id'] ?>#cardKomentar"
                        title="<?= isset($komentarSayaPerBinaan[(int) $s['id']])
@@ -298,6 +363,44 @@ if ($u['role'] === 'pengawas') {
           </table>
         </div>
       </div>
+
+      <?php
+      // POPUP PERINGATAN "BINAAN SUDAH TIDAK AKTIF" (permintaan pemilik, v1.37.2).
+      // Dicetak SEKALI; isinya (nama lembaga, kepala, status, tanggal berakhir, tautan WA) diisi
+      // skrip dari atribut `data-*` elemen yang diklik (lihat initBinaanTutup() di assets/app.js),
+      // jadi tidak perlu satu dialog untuk setiap binaan. Pesan lengkap versi server memakai
+      // binaan_nonaktif_pesan() (satu sumber kalimat).
+      ?>
+      <dialog class="popup popup-binaan" id="popupBinaanTutup" aria-labelledby="popupBinaanTutupJudul">
+        <div class="popup-isi">
+          <div class="popup-ic"><?= ikon('alert', 26) ?></div>
+          <h2 id="popupBinaanTutupJudul">Sekolah/Madrasah Binaan Sudah Tidak Aktif</h2>
+          <p class="popup-lead">Status binaan ini <b>sudah tidak aktif</b>, sehingga rekap supervisinya
+            belum dapat dibuka (aplikasi lembaganya terkunci).</p>
+          <div class="alert alert-err" style="margin:0 0 12px">
+            <?= ikon('alert', 16) ?>
+            <span>Status: <b data-bt-status>-</b> &middot; <span data-bt-ket>-</span><span data-bt-tanggal-baris> &middot; berakhir <b data-bt-tanggal>-</b></span>.
+              Seluruh data lembaga <b>tetap aman</b> (tidak ada yang dihapus).</span>
+          </div>
+          <table class="tbl tbl-ringkas">
+            <tbody>
+              <tr><td>Sekolah/madrasah</td><td><b data-bt-nama>-</b></td></tr>
+              <tr><td>Kepala</td><td><b data-bt-kepala>-</b></td></tr>
+              <tr><td>Yang perlu dilakukan</td><td>
+                Mohon sampaikan kepada <b>kepala sekolah/madrasah</b> agar
+                <b>mengaktifkan lembaganya</b> dengan memasukkan <b>kode aktivasi</b> pada menu
+                <b>Status &amp; Aktivasi</b>. Setelah lembaganya diaktifkan, rekap supervisi binaan
+                ini dapat dibuka kembali.
+              </td></tr>
+            </tbody>
+          </table>
+          <div class="popup-aksi">
+            <a class="btn btn-ok" data-bt-wa href="#" target="_blank" rel="noopener noreferrer"
+               title="Kirim WhatsApp ke kepala sekolah/madrasah untuk meminta aktivasi"><?= ikon('whatsapp', 15) ?> Kirim WA ke Kepala</a>
+            <button class="btn btn-ghost" type="button" data-bt-tutup>Mengerti</button>
+          </div>
+        </div>
+      </dialog>
 
     <?php endif; ?>
 

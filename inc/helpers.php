@@ -1027,7 +1027,7 @@ function pengawas_punya(int $userId, int $sekolahId): bool
  * Kunci pembanding NAMA (lembaga maupun orang): huruf kecil, hanya huruf & angka.
  * Dipakai supaya "MA. Sirojuth Tholibiin, Mootilango" dianggap SAMA dengan
  * "ma sirojuth tholibiin mootilango" (perbedaan huruf besar/kecil, spasi, titik, dan tanda baca
- * lain diabaikan). Dipakai juga oleh pengawas_nama_kunci() dan pendaftaran_sekolah_nonaktif().
+ * lain diabaikan). Dipakai juga oleh pengawas_nama_kunci() dan pendaftaran_sekolah_terdaftar().
  */
 function nama_kunci_pembanding(string $nama): string
 {
@@ -2335,6 +2335,52 @@ function aktivasi_pesan_kunci(?array $sekolah = null): string
 }
 
 /**
+ * PERINGATAN "BINAAN SUDAH TIDAK AKTIF" (permintaan pemilik, v1.37.2).
+ *
+ * Permintaan pemilik: *"Pada akun pengawas, ketika status madrasah binaannya masa uji coba habis
+ * ketika dia mengklik yang saya tandai warna merah langsung ada peringatan bahwa status binaan
+ * sudah tidak aktif dan minta kepala sekolah/madrasah agar mengaktifkan lembaganya."*
+ *
+ * Dipakai SATU sumber di tiga tempat pada daftar binaan pengawas (index.php): popup peringatan
+ * (atribut `data-binaan-tutup`), tautan cadangan tanpa JavaScript (`?binaan_tutup=ID`), dan
+ * penjagaan POST "masuk ke sekolah" — supaya kalimatnya tidak pernah berbeda antartempat.
+ * Gerbang kunci (gerbang_aktivasi) juga memakainya saat pengawas terlanjur membuka binaan terkunci.
+ *
+ * Hanya berlaku untuk sekolah yang benar-benar TERKUNCI (`kadaluarsa` / `uji_habis`); sekolah yang
+ * masih dalam mode terbatas (uji coba berjalan) tidak boleh diberi peringatan ini.
+ */
+function binaan_nonaktif_pesan(?array $sekolah = null): string
+{
+    if ($sekolah === null) {
+        $sekolah = current_sekolah();
+    }
+    if (!$sekolah) {
+        return 'Sekolah/madrasah binaan ini sudah tidak aktif sehingga rekapnya belum dapat dibuka.';
+    }
+    $nama = trim((string) ($sekolah['nama'] ?? ''));
+    $nama = $nama !== '' ? ' ' . $nama : '';
+    $st = aktivasi_status($sekolah);
+    if ($st['keadaan'] !== 'uji_habis' && $st['keadaan'] !== 'kadaluarsa') {
+        // Pengaman: sekolah yang MASIH boleh dipakai (aktif / mode terbatas) tidak boleh
+        // diberi kalimat "sudah TIDAK AKTIF".
+        return 'Status sekolah/madrasah binaan' . $nama . ' masih dapat dipakai'
+            . ($st['keadaan'] === 'dibatasi' ? ' (mode terbatas, belum diaktivasi)' : '') . '.';
+    }
+    if ($st['keadaan'] === 'uji_habis') {
+        $kapan = $st['uji_sampai_ts'] > 0 ? ' (masa uji coba berakhir ' . waktu_id_polos($st['uji_sampai']) . ')' : '';
+        $sebab = 'masa uji coba ' . (int) aktivasi_hari_uji() . ' hari sudah habis' . $kapan
+            . ' dan lembaganya belum diaktivasi';
+    } else {
+        $kapan = $st['sampai_ts'] > 0 ? ' (masa aktif berakhir ' . waktu_id_polos($st['sampai']) . ')' : '';
+        $sebab = 'masa aktifnya sudah habis' . $kapan;
+    }
+    return 'Status sekolah/madrasah binaan' . $nama . ' sudah TIDAK AKTIF: ' . $sebab
+        . ', sehingga aplikasinya terkunci dan rekap supervisinya belum dapat dibuka. '
+        . 'Mohon sampaikan kepada kepala sekolah/madrasah agar segera mengaktifkan lembaganya '
+        . 'dengan memasukkan kode aktivasi pada menu Status & Aktivasi.';
+}
+
+/**
  * GERBANG KUNCI APLIKASI — dipanggil dari require_login(), jadi berlaku untuk SELURUH halaman
  * yang butuh masuk (halaman pengelolaan, laporan, dan semua lembar cetak/ekspor).
  *
@@ -2357,6 +2403,23 @@ function gerbang_aktivasi(): void
         return;
     }
     $pesan = aktivasi_pesan_kunci();
+    // Pengawas TIDAK PERNAH bisa memasukkan kode aktivasi (kode milik pengelola sekolah/Super Admin),
+    // jadi mengalihkannya ke aktivasi.php hanya membuatnya tertahan di sana — dan karena
+    // aktivasi_gerbang_bebas() tidak memuat index.php, konteks sekolah terkunci itu membuat SELURUH
+    // halaman lain ikut terkunci sampai ia keluar-masuk. Sejak v1.37.2 konteksnya dilepas dan ia
+    // dikembalikan ke daftar binaan dengan peringatan agar kepala sekolah/madrasah mengaktifkan
+    // lembaganya.
+    if (is_pengawas()) {
+        $sekolahTutup = current_sekolah();
+        set_sekolah_context(null);
+        if (aktivasi_permintaan_ajax()) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            exit(json_encode(['ok' => false, 'terkunci' => true, 'error' => binaan_nonaktif_pesan($sekolahTutup)]));
+        }
+        flash(binaan_nonaktif_pesan($sekolahTutup), 'err');
+        redirect('index.php');
+    }
     // Permintaan AJAX/JSON (mis. unggahan berkas) dijawab 403 dengan JSON — bukan dialihkan, supaya
     // klien tidak menerima halaman HTML aktivasi sebagai "jawaban JSON".
     if (aktivasi_permintaan_ajax()) {
@@ -3591,49 +3654,81 @@ function rekap_kepala_ringkas(array $daftar): array
 }
 
 // ============================================================================================
-// PENDAFTARAN ULANG LEMBAGA YANG SUDAH DINONAKTIFKAN ADMIN (permintaan pemilik)
+// PENOLAKAN OTOMATIS PENDAFTARAN GANDA — "DATA LEMBAGA SUDAH PERNAH DIDAFTARKAN" (v1.35.0, v1.36.0)
 // --------------------------------------------------------------------------------------------
-// "Madrasah/sekolah yang statusnya di nonaktifkan oleh admin tidak bisa lagi melakukan
-//  pendaftaran. Akan terdeteksi nama sekolah/lembaganya dan kepala sekolah/madrasahnya pernah
-//  mendaftar (walaupun beda huruf besar maupun kecil). Sehingga ketika klik daftar langsung
-//  diarahkan ke WA 085394726089 untuk minta bantuan"
+// Permintaan pemilik:
+// "Buat aplikasi menolak otomatis pendaftaran jika terdeteksi nama lembaga atau nama kepala
+//  sekolah sudah ada di dalam database aplikasi dengan keterangan data lembaga sudah pernah di
+//  daftarkan dan langsung mengarah ke nomer WA 085394726089 untuk meminta bantuan. kecuali
+//  sekolah tersebut sudah di hapus oleh super admin."
 //
-// Cara kerjanya: halaman pendaftaran publik (daftar.php) TIDAK memproses pendaftaran bila nama
-// lembaga ATAU nama kepala sekolah/madrasah yang diisi SAMA dengan lembaga yang sudah ada dan
-// statusnya TIDAK AKTIF (`sekolah.aktif = 0`, yaitu dinonaktifkan Admin atau pendaftarannya
-// ditolak). Pendaftar lalu diarahkan menghubungi Admin aplikasi lewat WhatsApp
-// (AKTIVASI_WA_ADMIN) untuk meminta bantuan — datanya TIDAK diduplikasi.
+// DIPERKETAT (v1.36.0, permintaan pemilik "Ya saya ingin lebih ketat termasuk mencocokkan
+// NPSN/NSM"): selain NAMA LEMBAGA dan NAMA KEPALA, pembanding sekarang juga mencocokkan
+// **NPSN** (8 angka) dan **NSM** (12 angka). Urutan pemeriksaan per lembaga: NPSN → NSM → NAMA →
+// KEPALA (NPSN paling kuat karena merupakan identitas resmi lembaga).
+//
+// Cara kerjanya: halaman pendaftaran publik (daftar.php) TIDAK memproses pendaftaran bila salah
+// satu isian itu SAMA dengan lembaga mana pun yang MASIH ADA di tabel `sekolah` — tanpa memandang
+// statusnya (aktif, mode terbatas, dinonaktifkan Admin, maupun pendaftarannya ditolak). Pendaftar
+// lalu diarahkan menghubungi Admin aplikasi lewat WhatsApp (AKTIVASI_WA_ADMIN) untuk meminta
+// bantuan — datanya TIDAK diduplikasi.
+//
+// PENGECUALIAN yang diminta pemilik: lembaga yang sudah DIHAPUS Super Admin (`sekolah.php`
+// aksi=hapus — barisnya benar-benar di-DELETE) tidak lagi ada di tabel `sekolah`, sehingga nama
+// lembaga/kepala/NPSN/NSM-nya otomatis TIDAK memblokir pendaftaran baru. Jangan menambahkan tabel
+// arsip lembaga terhapus, karena itu justru membatalkan pengecualian ini.
 //
 // Pembanding nama memakai nama_kunci_pembanding(): "MA. Sirojuth Tholibiin" = "ma sirojuth
 // tholibiin" = "MA SIROJUTH THOLIBIIN" (besar/kecil huruf, spasi, dan tanda baca diabaikan).
+// Pembanding NPSN/NSM memakai angka_dari_isian(): hanya angkanya yang dibandingkan, sehingga
+// "7002 7902", "70027902", dan "7002.7902" dianggap sama.
 // ============================================================================================
 
 /**
- * Lembaga NONAKTIF yang pernah terdaftar dengan nama lembaga ATAU nama kepala sekolah/madrasah
- * yang sama dengan isian pendaftar.
+ * Angka saja dari sebuah isian nomor (NPSN/NSM): spasi, titik, garis, dan tanda baca lain dibuang.
+ * Kosong bila isian tidak memuat angka sama sekali.
+ */
+function angka_dari_isian(string $nilai): string
+{
+    return (string) preg_replace('/\D+/', '', $nilai);
+}
+
+/**
+ * Lembaga yang SUDAH ADA di basis data aplikasi dengan NPSN, NSM, nama lembaga, ATAU nama kepala
+ * sekolah/madrasah yang sama dengan isian pendaftar.
  *
  * @param string $nama   nama sekolah/madrasah yang diisi pendaftar
  * @param string $kepala nama kepala sekolah/madrasah yang diisi pendaftar
+ * @param string $npsn   NPSN yang diisi pendaftar
+ * @param string $nsm    NSM yang diisi pendaftar (hanya bermakna untuk madrasah)
  *
- * @return array{id:int,nama:string,kepala:string,verifikasi:string,alasan:string,cocok:string}|null
- *   null = tidak ada lembaga nonaktif yang cocok (pendaftaran boleh diproses);
- *   `cocok` = 'nama' bila yang sama adalah NAMA LEMBAGA, 'kepala' bila nama KEPALAnya.
+ * @return array{id:int,nama:string,kepala:string,npsn:string,nsm:string,verifikasi:string,aktif:int,
+ *               aktivasi:string,alasan:string,cocok:string,keadaan:string}|null
+ *   null = tidak ada lembaga yang cocok (pendaftaran boleh diproses);
+ *   `cocok` = 'npsn' | 'nsm' | 'nama' | 'kepala' (isian mana yang sama);
+ *   `keadaan` = keterangan status lembaga yang terdeteksi (lihat pendaftaran_sekolah_keadaan()).
  */
-function pendaftaran_sekolah_nonaktif(string $nama, string $kepala): ?array
+function pendaftaran_sekolah_terdaftar(string $nama, string $kepala, string $npsn = '', string $nsm = ''): ?array
 {
     $kNama   = nama_kunci_pembanding($nama);
     $kKepala = nama_kunci_pembanding($kepala);
-    // Isian yang terlalu pendek (mis. "-", "MA", atau nama kepala yang hanya berisi gelar) tidak
-    // dipakai membandingkan supaya tidak menolak pendaftaran yang sebenarnya sah.
+    $kNpsn   = angka_dari_isian($npsn);
+    $kNsm    = angka_dari_isian($nsm);
+    // Isian yang terlalu pendek (mis. "-", "MA", nama kepala yang hanya berisi gelar, atau NPSN/NSM
+    // yang belum lengkap) tidak dipakai membandingkan supaya tidak menolak pendaftaran yang sah.
     $cekNama   = strlen($kNama) >= DAFTAR_NAMA_MIN;
     $cekKepala = strlen($kKepala) >= DAFTAR_KEPALA_MIN;
-    if (!$cekNama && !$cekKepala) {
+    $cekNpsn   = strlen($kNpsn) === DAFTAR_NPSN_DIGIT;
+    $cekNsms   = strlen($kNsm) === DAFTAR_NSM_DIGIT;
+    if (!$cekNama && !$cekKepala && !$cekNpsn && !$cekNsms) {
         return null;
     }
 
     try {
-        $baris = all('SELECT id, nama, kepala_sekolah, verifikasi, alasan_tolak
-                        FROM sekolah WHERE aktif = 0 ORDER BY id');
+        // SELURUH lembaga yang masih ada (tanpa filter `aktif`) — lihat pengecualian "sudah dihapus
+        // Super Admin" pada komentar di atas.
+        $baris = all('SELECT id, nama, kepala_sekolah, npsn, nsm, verifikasi, aktif, aktivasi, alasan_tolak
+                        FROM sekolah ORDER BY id');
     } catch (Throwable $e) {
         // Kegagalan membaca basis data tidak boleh menghalangi pendaftaran (halaman publik).
         return null;
@@ -3641,7 +3736,11 @@ function pendaftaran_sekolah_nonaktif(string $nama, string $kepala): ?array
 
     foreach ($baris as $s) {
         $cocok = '';
-        if ($cekNama && nama_kunci_pembanding((string) ($s['nama'] ?? '')) === $kNama) {
+        if ($cekNpsn && angka_dari_isian((string) ($s['npsn'] ?? '')) === $kNpsn) {
+            $cocok = 'npsn';
+        } elseif ($cekNsms && angka_dari_isian((string) ($s['nsm'] ?? '')) === $kNsm) {
+            $cocok = 'nsm';
+        } elseif ($cekNama && nama_kunci_pembanding((string) ($s['nama'] ?? '')) === $kNama) {
             $cocok = 'nama';
         } elseif ($cekKepala && nama_kunci_pembanding((string) ($s['kepala_sekolah'] ?? '')) === $kKepala) {
             $cocok = 'kepala';
@@ -3653,12 +3752,54 @@ function pendaftaran_sekolah_nonaktif(string $nama, string $kepala): ?array
             'id'         => (int) $s['id'],
             'nama'       => (string) ($s['nama'] ?? ''),
             'kepala'     => (string) ($s['kepala_sekolah'] ?? ''),
+            'npsn'       => (string) ($s['npsn'] ?? ''),
+            'nsm'        => (string) ($s['nsm'] ?? ''),
             'verifikasi' => (string) ($s['verifikasi'] ?? ''),
+            'aktif'      => (int) ($s['aktif'] ?? 0),
+            'aktivasi'   => (string) ($s['aktivasi'] ?? ''),
             'alasan'     => (string) ($s['alasan_tolak'] ?? ''),
             'cocok'      => $cocok,
+            'keadaan'    => pendaftaran_sekolah_keadaan($s),
         ];
     }
     return null;
+}
+
+/**
+ * Label isian yang terdeteksi sama (untuk kartu penolakan & pesan WhatsApp).
+ *
+ * @param array<string,mixed>|null $cocok hasil pendaftaran_sekolah_terdaftar()
+ */
+function pendaftaran_cocok_label(?array $cocok): string
+{
+    switch ((string) ($cocok['cocok'] ?? '')) {
+        case 'npsn':
+            return 'NPSN';
+        case 'nsm':
+            return 'NSM';
+        case 'kepala':
+            return 'Kepala sekolah/madrasah';
+        default:
+            return 'Nama sekolah/madrasah';
+    }
+}
+
+/**
+ * Keterangan keadaan lembaga yang terdeteksi (dipakai kartu penolakan pada daftar.php).
+ * Hanya untuk DITAMPILKAN — tidak mengubah status apa pun.
+ *
+ * @param array<string,mixed> $s baris tabel `sekolah`
+ */
+function pendaftaran_sekolah_keadaan(array $s): string
+{
+    if ((int) ($s['aktif'] ?? 0) !== 1) {
+        return (string) ($s['verifikasi'] ?? '') === 'ditolak'
+            ? 'Pendaftaran ditolak Admin'
+            : 'Dinonaktifkan Admin';
+    }
+    return (string) ($s['aktivasi'] ?? '') === 'aktif'
+        ? 'Aktif'
+        : 'Aktif (mode terbatas, belum diaktivasi)';
 }
 
 /** Nomor WhatsApp Admin aplikasi untuk bantuan pendaftaran (bentuk internasional, untuk wa.me). */
@@ -3668,7 +3809,7 @@ function pendaftaran_bantuan_nomor(): string
 }
 
 /**
- * Pesan WhatsApp permohonan bantuan pendaftaran bagi lembaga yang dinonaktifkan Admin.
+ * Pesan WhatsApp permohonan bantuan pendaftaran bagi lembaga yang sudah pernah terdaftar.
  * Nama lembaga & nama kepala diambil dari ISIAN PENDAFTAR (bukan dari basis data) supaya Admin
  * aplikasi langsung tahu siapa yang sedang menghubunginya.
  */
@@ -3678,15 +3819,22 @@ function pendaftaran_bantuan_pesan(string $nama, string $kepala = '', ?array $co
     $kepala = trim($kepala);
     $pesan = 'Assalamualaikum Admin Aplikasi ' . APP_NAME . '. Kami dari ' . $nama
         . ($kepala !== '' && $kepala !== '-' ? ' (Kepala Sekolah/Madrasah: ' . $kepala . ')' : '')
-        . ' ingin mendaftar pada aplikasi ' . APP_NAME . ', tetapi sistem mendeteksi bahwa nama '
-        . 'sekolah/madrasah atau kepala sekolah/madrasah kami sudah pernah mendaftar dan statusnya '
-        . 'dinonaktifkan. Mohon bantuan untuk mengaktifkan kembali agar kami dapat mendaftar. '
-        . 'Terima kasih.';
+        . ' ingin mendaftar pada aplikasi ' . APP_NAME . ', tetapi sistem mendeteksi bahwa '
+        . 'data lembaga kami sudah pernah didaftarkan. Mohon bantuan agar kami dapat '
+        . 'mendaftar/menggunakan aplikasi ini. Terima kasih.';
     if ($cocok !== null) {
-        $sebab = (string) ($cocok['cocok'] ?? '') === 'kepala'
-            ? 'Kepala sekolah/madrasah'
-            : 'Nama sekolah/madrasah';
-        $pesan .= ' (' . $sebab . ' terdeteksi sama: ' . trim((string) ($cocok['nama'] ?? '')) . ')';
+        $nilai = '';
+        switch ((string) ($cocok['cocok'] ?? '')) {
+            case 'npsn':
+                $nilai = trim((string) ($cocok['npsn'] ?? ''));
+                break;
+            case 'nsm':
+                $nilai = trim((string) ($cocok['nsm'] ?? ''));
+                break;
+            default:
+                $nilai = trim((string) ($cocok['nama'] ?? ''));
+        }
+        $pesan .= ' (' . pendaftaran_cocok_label($cocok) . ' terdeteksi sama: ' . $nilai . ')';
     }
     return $pesan;
 }
@@ -3696,4 +3844,128 @@ function pendaftaran_bantuan_tautan(string $nama, string $kepala = '', ?array $c
 {
     return 'https://wa.me/' . pendaftaran_bantuan_nomor()
         . '?text=' . rawurlencode(pendaftaran_bantuan_pesan($nama, $kepala, $cocok));
+}
+
+// ============================================================================================
+// BUKA / TUTUP PENDAFTARAN SEKOLAH/MADRASAH (v1.34.0 — permintaan pemilik)
+// --------------------------------------------------------------------------------------------
+// "Pada akun super admin tambahkan fitur untuk menutup pendaftaran sekolah/madrasah (seperti
+//  aplikasi e-Guru). Ketika pendaftaran ditutup berikan keterangan bahwa jumlah pendaftar telah
+//  mencapai batas yang ditetapkan oleh sistem. Silahkan hubungi admin di WA 081356964665"
+//
+// Keadaan ini TINGKAT APLIKASI (bukan per sekolah) sehingga disimpan pada tabel `app_pengaturan`
+// (tanpa perubahan skema):
+//   daftar_tutup  '1' = DITUTUP, '0'/kosong = dibuka
+//   daftar_batas  jumlah pendaftar maksimum; 0 = tanpa batas (hanya tombol tutup yang berlaku)
+//   daftar_wa     nomor WA admin yang dihubungi ketika pendaftaran ditutup
+//
+// DUA SEBAB penutupan:
+//   'manual' — Super Admin menutup sendiri (tombol),
+//   'batas'  — jumlah pendaftar sudah MENCAPAI batas yang ditetapkan (`daftar_batas`).
+// Pesan yang dilihat pengunjung SAMA untuk keduanya (kalimat yang diminta pemilik); keterangan
+// kecil di bawahnya menjelaskan sebabnya supaya Admin/pengunjung tidak bingung.
+//
+// SATU TEMPAT ATURAN: `daftar_status_info()` dipakai `daftar.php` (gerbang + halaman keterangan)
+// dan `pendaftaran.php` (kartu Super Admin). JANGAN menyalin pemeriksaan tutup/batas ke halaman
+// lain.
+// ============================================================================================
+
+/** Batas jumlah pendaftar (0 = tidak dibatasi). */
+function daftar_batas(): int
+{
+    $angka = (int) preg_replace('/\D/', '', trim(app_setting('daftar_batas', '0')));
+    return max(0, $angka);
+}
+
+/** Jumlah sekolah/madrasah yang TERDAFTAR (pendaftar) — dasar batas. */
+function daftar_terdaftar(): int
+{
+    return (int) val('SELECT COUNT(*) FROM sekolah', [], 0);
+}
+
+/** Nomor WA admin saat pendaftaran ditutup (hanya angka; bawaan DAFTAR_WA_BAWAAN). */
+function daftar_wa(): string
+{
+    $w = trim(app_setting('daftar_wa', DAFTAR_WA_BAWAAN));
+    return aktivasi_wa_sah($w) ? aktivasi_wa_bersih($w) : DAFTAR_WA_BAWAAN;
+}
+
+/** Tautan WhatsApp admin saat pendaftaran ditutup. */
+function daftar_wa_tautan(): string
+{
+    return 'https://wa.me/' . wa_internasional(daftar_wa());
+}
+
+/**
+ * Keadaan pendaftaran mandiri (satu sumber kebenaran).
+ *
+ * @param bool $segarkan true = buang simpanan sementara (dipakai setelah pengaturan disimpan
+ *                       pada permintaan yang sama)
+ * @return array{tutup:bool,tutup_manual:bool,sebab:string,batas:int,terdaftar:int,sisa:int,
+ *               wa:string,tautan:string,pesan:string,keterangan:string}
+ */
+function daftar_status_info(bool $segarkan = false): array
+{
+    static $cache = null;
+    if ($cache !== null && !$segarkan) {
+        return $cache;
+    }
+
+    $tutupManual = app_setting('daftar_tutup', '0') === '1';
+    $batas = daftar_batas();
+    $terdaftar = daftar_terdaftar();
+
+    $sebab = '';
+    if ($tutupManual) {
+        $sebab = 'manual';
+    } elseif ($batas > 0 && $terdaftar >= $batas) {
+        $sebab = 'batas';
+    }
+
+    $wa = daftar_wa();
+    // Kalimat yang dilihat pengunjung (dipakai halaman pendaftaran & pratinjau di akun Super Admin).
+    // v1.34.2 (permintaan pemilik): *"Tulisan yang saya tandai ganti dengan: 'Jumlah pendaftar telah
+    // mencapai batas yang ditetapkan oleh sistem' Buat dalam satu baris saja"* → kalimat ajakan
+    // "Silahkan hubungi admin di WA …" DIHAPUS dari sini (nomor WA tetap tampil pada tombol
+    // "Hubungi Admin di WA …" di bawahnya + kalimat penjelas kartu).
+    $pesan = 'Jumlah pendaftar telah mencapai batas yang ditetapkan oleh sistem';
+
+    if ($sebab === 'batas') {
+        $keterangan = 'Pendaftaran ditutup otomatis karena jumlah pendaftar sudah mencapai batas '
+            . $batas . ' sekolah/madrasah.';
+    } elseif ($sebab === 'manual') {
+        $keterangan = 'Pendaftaran ditutup oleh Admin aplikasi.';
+    } else {
+        $keterangan = 'Pendaftaran dibuka — sekolah/madrasah dapat mendaftar sendiri.';
+    }
+
+    $cache = [
+        'tutup'        => $sebab !== '',
+        'tutup_manual' => $tutupManual,
+        'sebab'        => $sebab,
+        'batas'        => $batas,
+        'terdaftar'    => $terdaftar,
+        'sisa'         => $batas > 0 ? max(0, $batas - $terdaftar) : -1,
+        'wa'           => $wa,
+        'tautan'       => daftar_wa_tautan(),
+        'pesan'        => $pesan,
+        'keterangan'   => $keterangan,
+    ];
+    return $cache;
+}
+
+/** Simpan keadaan pendaftaran (khusus Super Admin). */
+function daftar_status_simpan(bool $tutup, int $batas, string $wa): void
+{
+    app_setting_set('daftar_tutup', $tutup ? '1' : '0');
+    app_setting_set('daftar_batas', (string) max(0, $batas));
+    app_setting_set('daftar_wa', aktivasi_wa_bersih($wa));
+    app_setting_set('daftar_diubah', date('Y-m-d H:i:s'));
+    daftar_status_info(true);   // segarkan simpanan sementara pada permintaan ini
+}
+
+/** Kapan keadaan pendaftaran terakhir diubah ('' bila belum pernah). */
+function daftar_status_diubah(): string
+{
+    return trim(app_setting('daftar_diubah', ''));
 }
